@@ -36,8 +36,8 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
   const [isAutoplayMuted, setIsAutoplayMuted] = useState<boolean>(false);
 
-  const hasLiveVideoTrack = Boolean(
-    stream && stream.getVideoTracks().some((t) => t.readyState === 'live')
+  const hasVideoTrack = Boolean(
+    stream && stream.getVideoTracks().length > 0
   );
 
   useEffect(() => {
@@ -57,18 +57,28 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
       videoEl.addEventListener('waiting', handleWaiting);
 
       const tryPlay = () => {
-        videoEl.play().catch(() => {
-          // If browser policy blocks unmuted autoplay, mute audio temporarily so video plays immediately
-          videoEl.muted = true;
-          setIsAutoplayMuted(true);
-          videoEl.play().then(() => {
+        const p = videoEl.play();
+        if (p !== undefined) {
+          p.then(() => {
             setIsVideoPlaying(true);
-          }).catch(() => {});
-        });
+          }).catch(() => {
+            // If browser policy blocks unmuted autoplay, mute audio temporarily so video plays immediately
+            videoEl.muted = true;
+            setIsAutoplayMuted(true);
+            videoEl.play().then(() => {
+              setIsVideoPlaying(true);
+            }).catch(() => {});
+          });
+        }
       };
 
       tryPlay();
       videoEl.onloadedmetadata = () => {
+        setIsVideoPlaying(true);
+        tryPlay();
+      };
+      videoEl.oncanplay = () => {
+        setIsVideoPlaying(true);
         tryPlay();
       };
 
@@ -94,14 +104,14 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
 
   const isConnectedWithVideo =
     Boolean(stream) &&
-    hasLiveVideoTrack &&
-    (isVideoPlaying || matchState === MatchmakingState.Connected);
+    (matchState === MatchmakingState.Connected ||
+      (hasVideoTrack && (matchState === MatchmakingState.Connecting || isVideoPlaying)));
 
   const isSearchingState =
     matchState === MatchmakingState.Searching ||
     matchState === MatchmakingState.Skipping ||
     matchState === MatchmakingState.Matched ||
-    matchState === MatchmakingState.Connecting;
+    (matchState === MatchmakingState.Connecting && !hasVideoTrack);
 
   return (
     <VideoPanel className={className}>

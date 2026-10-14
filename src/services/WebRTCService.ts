@@ -140,21 +140,27 @@ export class WebRTCService {
     pc.ontrack = (event: RTCTrackEvent) => {
       if (this.activeMatchId !== matchId) return;
 
-      let targetStream: MediaStream;
-      if (event.streams && event.streams[0]) {
-        targetStream = event.streams[0];
-      } else {
-        if (!this.remoteStream) {
-          this.remoteStream = new MediaStream();
-        }
-        if (!this.remoteStream.getTracks().some((t) => t.id === event.track.id)) {
-          this.remoteStream.addTrack(event.track);
-        }
-        targetStream = this.remoteStream;
+      if (!this.remoteStream) {
+        this.remoteStream = new MediaStream();
       }
 
-      this.remoteStream = targetStream;
-      this.callbacks.onRemoteStream(targetStream);
+      // Add direct track from event
+      if (!this.remoteStream.getTracks().some((t) => t.id === event.track.id)) {
+        this.remoteStream.addTrack(event.track);
+      }
+
+      // If stream array is provided, add all its tracks as well
+      if (event.streams && event.streams[0]) {
+        event.streams[0].getTracks().forEach((track) => {
+          if (!this.remoteStream!.getTracks().some((t) => t.id === track.id)) {
+            this.remoteStream!.addTrack(track);
+          }
+        });
+      }
+
+      // Always pass a new MediaStream instance so React state change fires and re-renders
+      const freshStream = new MediaStream(this.remoteStream.getTracks());
+      this.callbacks.onRemoteStream(freshStream);
     };
 
     // Forward ICE candidates to remote peer via signaling server

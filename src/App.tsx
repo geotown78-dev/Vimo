@@ -114,11 +114,22 @@ export default function App() {
 
     matchmakingRef.current = service;
 
+    if (localStreamRef.current) {
+      service.setLocalStream(localStreamRef.current);
+    }
+
     return () => {
       service.destroy();
       matchmakingRef.current = null;
     };
   }, []);
+
+  // Synchronize localStream with matchmaking service whenever stream is updated
+  useEffect(() => {
+    if (matchmakingRef.current && localStream) {
+      matchmakingRef.current.setLocalStream(localStream);
+    }
+  }, [localStream]);
 
   // Check if browser context is insecure (WebRTC/getUserMedia is blocked by browsers on HTTP)
   const [isInsecureContext] = useState<boolean>(() => {
@@ -337,8 +348,12 @@ export default function App() {
   // Next / Start Search
   const handleNext = useCallback(async () => {
     setMessages([]);
-    if (!localStreamRef.current && !hasPermissions && !isRequestingPermission) {
-      await acquireMediaStream();
+    let stream = localStreamRef.current;
+    if (!stream && !hasPermissions && !isRequestingPermission) {
+      stream = await acquireMediaStream();
+    }
+    if (stream && matchmakingRef.current) {
+      matchmakingRef.current.setLocalStream(stream);
     }
     matchmakingRef.current?.startOrNextSearch();
   }, [acquireMediaStream, hasPermissions, isRequestingPermission]);
