@@ -230,14 +230,16 @@ async function startServer() {
 
   function getIceServersConfig() {
     const iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      { urls: 'stun:stun.services.mozilla.com' },
-      { urls: 'stun:stun.sipgate.net:10000' },
+      {
+        urls: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun3.l.google.com:19302',
+          'stun:stun4.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+        ],
+      },
     ];
 
     const turnUrl = process.env.TURN_URL || process.env.VITE_TURN_URL;
@@ -254,7 +256,7 @@ async function startServer() {
         ...(turnCredential ? { credential: turnCredential.trim() } : {}),
       });
     } else {
-      // Default fallback open TURN relay servers for peer-to-peer across NAT and mobile networks
+      // Default fallback open TURN relay servers for peer-to-peer across NAT and mobile carrier networks
       iceServers.push({
         urls: [
           'turn:openrelay.metered.ca:80',

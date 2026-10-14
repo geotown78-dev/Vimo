@@ -95,15 +95,13 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
   const isConnectedWithVideo =
     Boolean(stream) &&
     hasLiveVideoTrack &&
-    isVideoPlaying &&
-    (matchState === MatchmakingState.Connected || matchState === MatchmakingState.Connecting);
+    (isVideoPlaying || matchState === MatchmakingState.Connected);
 
   const isSearchingState =
     matchState === MatchmakingState.Searching ||
     matchState === MatchmakingState.Skipping ||
     matchState === MatchmakingState.Matched ||
-    matchState === MatchmakingState.Connecting ||
-    (!isConnectedWithVideo && (matchState === MatchmakingState.Connected));
+    matchState === MatchmakingState.Connecting;
 
   return (
     <VideoPanel className={className}>

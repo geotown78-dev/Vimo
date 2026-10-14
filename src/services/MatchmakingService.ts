@@ -20,6 +20,9 @@ export class MatchmakingService {
   private currentPeerId: string | null = null;
   private localStream: MediaStream | null = null;
   private isRequestInFlight = false;
+  // User explicitly stopped flag: only becomes true when the user themselves clicks Stop / Disconnect
+  private userExplicitlyStopped = true;
+  private autoSearchTimeout: number | null = null;
   private signaling: SignalingService;
   private webrtc: WebRTCService;
   private callbacks: MatchmakingServiceCallbacks;
@@ -30,7 +33,7 @@ export class MatchmakingService {
     this.webrtc = new WebRTCService({
       onRemoteStream: (stream) => {
         this.callbacks.onRemoteStreamChange(stream);
-        if (stream && this.state === MatchmakingState.Connecting) {
+        if (stream && this.state !== MatchmakingState.Connected) {
           this.setState(MatchmakingState.Connected);
         }
       },
@@ -41,29 +44,26 @@ export class MatchmakingService {
       },
       onConnectionStateChange: (matchId, pcState) => {
         if (this.currentMatchId !== matchId) return;
+
         if (pcState === 'connected') {
           this.setState(MatchmakingState.Connected);
         } else if (pcState === 'connecting') {
           if (this.state !== MatchmakingState.Connected) {
             this.setState(MatchmakingState.Connecting);
           }
-        } else if (pcState === 'disconnected' || pcState === 'closed') {
-          this.handleMatchEnded({ matchId, reason: 'peer-disconnected' });
+        } else if (pcState === 'disconnected') {
+          // Soft disconnect; peer connection might recover or peer is about to leave
+        } else if (pcState === 'closed') {
+          this.handlePeerDisconnected(matchId, 'peer-disconnected');
         } else if (pcState === 'failed') {
-          this.webrtc.cleanupConnection();
-          this.currentMatchId = null;
-          this.currentPeerId = null;
-          this.callbacks.onMatchInfoChange(null, null);
-          this.setState(MatchmakingState.Error, 'Connection lost due to network failure.');
+          // Connection failed across network: do not freeze app in dead state.
+          // Clean up this match and auto-continue search for the next user if user didn't stop.
+          this.handleConnectionFailure(matchId);
         }
       },
-      onError: (matchId, message) => {
+      onError: (matchId, _message) => {
         if (this.currentMatchId !== matchId) return;
-        this.webrtc.cleanupConnection();
-        this.currentMatchId = null;
-        this.currentPeerId = null;
-        this.callbacks.onMatchInfoChange(null, null);
-        this.setState(MatchmakingState.Error, message);
+        this.handleConnectionFailure(matchId);
       },
     });
 
@@ -81,7 +81,7 @@ export class MatchmakingService {
           this.currentMatchId = null;
           this.currentPeerId = null;
           this.callbacks.onMatchInfoChange(null, null);
-          this.setState(MatchmakingState.Disconnected, 'Disconnected from signaling server.');
+          this.setState(MatchmakingState.Disconnected, 'Disconnected from server.');
         }
       },
       onMatchFound: (event) => this.handleMatchFound(event),
@@ -89,7 +89,13 @@ export class MatchmakingService {
       onMatchEnded: (event) => this.handleMatchEnded(event),
       onError: (message) => {
         this.isRequestInFlight = false;
-        this.setState(MatchmakingState.Error, message);
+        if (this.userExplicitlyStopped) {
+          this.setState(MatchmakingState.Error, message);
+        } else {
+          // If in active search mode, recover automatically
+          this.setState(MatchmakingState.Searching, 'Reconnecting...');
+          this.signaling.joinQueue();
+        }
       },
     });
 
@@ -125,49 +131,40 @@ export class MatchmakingService {
   }
 
   public startOrNextSearch(): void {
-    // Prevent simultaneous duplicate requests while a transition is in flight
-    if (this.isRequestInFlight) return;
+    this.clearAutoSearchTimer();
+    this.userExplicitlyStopped = false;
 
+    if (this.isRequestInFlight) return;
     this.isRequestInFlight = true;
 
     const hadActiveMatch = Boolean(this.currentMatchId);
-    const wasAlreadySearching =
-      this.state === MatchmakingState.Searching ||
-      this.state === MatchmakingState.Matched ||
-      this.state === MatchmakingState.Connecting ||
-      this.state === MatchmakingState.Connected;
 
-    // Clean up any existing WebRTC connection before creating a new one
+    // Clean up current peer connection
     this.webrtc.cleanupConnection();
     this.currentMatchId = null;
     this.currentPeerId = null;
     this.callbacks.onMatchInfoChange(null, null);
 
-    if (hadActiveMatch || wasAlreadySearching) {
+    if (hadActiveMatch) {
       this.setState(MatchmakingState.Skipping, 'Switching to next user...');
-      const sent = this.signaling.skipMatch();
-      if (sent) {
-        window.setTimeout(() => {
-          if (this.state === MatchmakingState.Skipping) {
-            this.setState(MatchmakingState.Searching);
-          }
-          this.isRequestInFlight = false;
-        }, 250);
-        return;
-      }
+      this.signaling.skipMatch();
     } else {
-      const sent = this.signaling.joinQueue();
-      if (sent) {
-        this.setState(MatchmakingState.Searching);
-      }
+      this.setState(MatchmakingState.Searching);
+      this.signaling.joinQueue();
     }
 
     window.setTimeout(() => {
       this.isRequestInFlight = false;
+      if (this.state === MatchmakingState.Skipping) {
+        this.setState(MatchmakingState.Searching);
+      }
     }, 250);
   }
 
   public disconnectCurrentMatch(): void {
+    this.clearAutoSearchTimer();
+    // User explicitly pressed Stop / Disconnect!
+    this.userExplicitlyStopped = true;
     this.isRequestInFlight = false;
     this.webrtc.cleanupConnection();
 
@@ -189,6 +186,7 @@ export class MatchmakingService {
   }
 
   public blockAndReportCurrentStranger(reason: string): void {
+    this.clearAutoSearchTimer();
     const matchId = this.currentMatchId;
     this.webrtc.cleanupConnection();
     this.currentMatchId = null;
@@ -198,13 +196,19 @@ export class MatchmakingService {
     if (matchId) {
       this.signaling.blockAndReportPeer(matchId, reason);
     }
-    this.setState(MatchmakingState.Disconnected, 'User blocked and reported.');
+
+    if (!this.userExplicitlyStopped) {
+      this.setState(MatchmakingState.Searching, 'User blocked. Finding next...');
+      this.signaling.joinQueue();
+    } else {
+      this.setState(MatchmakingState.Disconnected, 'User blocked and reported.');
+    }
   }
 
   private async handleMatchFound(event: MatchFoundEvent): Promise<void> {
+    this.clearAutoSearchTimer();
     this.isRequestInFlight = false;
 
-    // Prevent two simultaneous matches for the same user
     if (this.currentMatchId && this.currentMatchId !== event.matchId) {
       this.webrtc.cleanupConnection();
     }
@@ -224,7 +228,6 @@ export class MatchmakingService {
   }
 
   private async handleSignalMessage(event: SignalMessageEvent): Promise<void> {
-    // Reject signaling messages for stale or non-matching sessions
     if (!this.currentMatchId || this.currentMatchId !== event.matchId) {
       return;
     }
@@ -246,23 +249,79 @@ export class MatchmakingService {
       return;
     }
 
+    this.handlePeerDisconnected(event.matchId, event.reason);
+  }
+
+  private handlePeerDisconnected(
+    matchId: string,
+    reason: 'peer-left' | 'peer-skipped' | 'peer-disconnected' | 'blocked'
+  ): void {
+    if (this.currentMatchId && this.currentMatchId !== matchId) {
+      return;
+    }
+
     this.webrtc.cleanupConnection();
     this.currentMatchId = null;
     this.currentPeerId = null;
     this.callbacks.onMatchInfoChange(null, null);
 
-    // Return the remote panel to the disconnected state; never auto-start without updating state
-    const detail =
-      event.reason === 'peer-skipped'
-        ? 'Stranger skipped to next chat.'
-        : event.reason === 'blocked'
-        ? 'Connection terminated.'
-        : 'Stranger disconnected.';
+    // CRITICAL: If the user DID NOT explicitly click Stop, their search NEVER STOPS!
+    // Stranger's action does not terminate this user's search session.
+    if (!this.userExplicitlyStopped) {
+      const detail =
+        reason === 'peer-skipped'
+          ? 'Stranger skipped. Searching next...'
+          : reason === 'blocked'
+          ? 'Connection terminated. Searching next...'
+          : 'Stranger disconnected. Searching next...';
 
-    this.setState(MatchmakingState.Disconnected, detail);
+      this.setState(MatchmakingState.Searching, detail);
+
+      // Re-join matchmaking queue to immediately find the next available user
+      this.clearAutoSearchTimer();
+      this.autoSearchTimeout = window.setTimeout(() => {
+        if (!this.userExplicitlyStopped && !this.currentMatchId) {
+          this.signaling.joinQueue();
+        }
+      }, 300);
+    } else {
+      this.setState(MatchmakingState.Disconnected, 'Call ended.');
+    }
+  }
+
+  private handleConnectionFailure(matchId: string): void {
+    if (this.currentMatchId && this.currentMatchId !== matchId) {
+      return;
+    }
+
+    this.webrtc.cleanupConnection();
+    this.currentMatchId = null;
+    this.currentPeerId = null;
+    this.callbacks.onMatchInfoChange(null, null);
+
+    // If user is actively searching, do not freeze on error; auto-retry search for another user
+    if (!this.userExplicitlyStopped) {
+      this.setState(MatchmakingState.Searching, 'Finding another partner...');
+      this.clearAutoSearchTimer();
+      this.autoSearchTimeout = window.setTimeout(() => {
+        if (!this.userExplicitlyStopped && !this.currentMatchId) {
+          this.signaling.skipMatch();
+        }
+      }, 400);
+    } else {
+      this.setState(MatchmakingState.Disconnected, 'Connection failed.');
+    }
+  }
+
+  private clearAutoSearchTimer(): void {
+    if (this.autoSearchTimeout !== null) {
+      clearTimeout(this.autoSearchTimeout);
+      this.autoSearchTimeout = null;
+    }
   }
 
   public destroy(): void {
+    this.clearAutoSearchTimer();
     this.webrtc.cleanupConnection();
     this.signaling.destroy();
   }
