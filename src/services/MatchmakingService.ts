@@ -270,10 +270,10 @@ export class MatchmakingService {
     if (!this.userExplicitlyStopped) {
       const detail =
         reason === 'peer-skipped'
-          ? 'Stranger skipped. Searching next...'
+          ? 'stranger_skipped'
           : reason === 'blocked'
-          ? 'Connection terminated. Searching next...'
-          : 'Stranger disconnected. Searching next...';
+          ? 'stranger_blocked'
+          : 'stranger_left';
 
       this.setState(MatchmakingState.Searching, detail);
 
@@ -285,7 +285,7 @@ export class MatchmakingService {
         }
       }, 300);
     } else {
-      this.setState(MatchmakingState.Disconnected, 'Call ended.');
+      this.setState(MatchmakingState.Disconnected, 'call_ended');
     }
   }
 
@@ -301,7 +301,7 @@ export class MatchmakingService {
 
     // If user is actively searching, do not freeze on error; auto-retry search for another user
     if (!this.userExplicitlyStopped) {
-      this.setState(MatchmakingState.Searching, 'Finding another partner...');
+      this.setState(MatchmakingState.Searching, 'reconnecting_partner');
       this.clearAutoSearchTimer();
       this.autoSearchTimeout = window.setTimeout(() => {
         if (!this.userExplicitlyStopped && !this.currentMatchId) {
@@ -309,7 +309,7 @@ export class MatchmakingService {
         }
       }, 400);
     } else {
-      this.setState(MatchmakingState.Disconnected, 'Connection failed.');
+      this.setState(MatchmakingState.Disconnected, 'connection_failed');
     }
   }
 

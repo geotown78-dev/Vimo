@@ -100,6 +100,24 @@ function cleanupMatchSignaling(matchId: string) {
   }
 }
 
+const recentPairs = new Map<string, number>();
+
+function recordRecentPair(u1: string, u2: string) {
+  const key = u1 < u2 ? `${u1}:${u2}` : `${u2}:${u1}`;
+  recentPairs.set(key, Date.now());
+}
+
+function wasRecentlyMatched(u1: string, u2: string, cooldownMs = 3500): boolean {
+  const key = u1 < u2 ? `${u1}:${u2}` : `${u2}:${u1}`;
+  const ts = recentPairs.get(key);
+  if (!ts) return false;
+  if (Date.now() - ts > cooldownMs) {
+    recentPairs.delete(key);
+    return false;
+  }
+  return true;
+}
+
 function terminateActiveMatchForUser(
   sessionId: string,
   reason: 'peer-left' | 'peer-skipped' | 'peer-disconnected' | 'blocked'
@@ -119,6 +137,8 @@ function terminateActiveMatchForUser(
   cleanupMatchSignaling(matchId);
 
   const peerSessionId = match.userA === sessionId ? match.userB : match.userA;
+  recordRecentPair(sessionId, peerSessionId);
+
   const peerSession = userSessions.get(peerSessionId);
   if (peerSession && peerSession.currentMatchId === matchId) {
     peerSession.currentMatchId = null;
@@ -131,7 +151,14 @@ function terminateActiveMatchForUser(
   }
 }
 
+let retryMatchTimeout: NodeJS.Timeout | null = null;
+
 function attemptMatchmaking() {
+  if (retryMatchTimeout) {
+    clearTimeout(retryMatchTimeout);
+    retryMatchTimeout = null;
+  }
+
   // Clean up any stale or disconnected users in the queue first
   for (let i = matchmakingQueue.length - 1; i >= 0; i--) {
     const entry = matchmakingQueue[i];
@@ -148,6 +175,7 @@ function attemptMatchmaking() {
 
   if (matchmakingQueue.length < 2) return;
 
+  let hasPendingCooldown = false;
   let i = 0;
   while (i < matchmakingQueue.length) {
     const candidateA = matchmakingQueue[i];
@@ -167,14 +195,19 @@ function attemptMatchmaking() {
         continue;
       }
 
-      // Never match a user with themselves or with a blocked peer
-      if (
-        candidateA.sessionId !== candidateB.sessionId &&
-        !isBlockedBetween(candidateA.sessionId, candidateB.sessionId)
-      ) {
-        matchedIndex = j;
-        break;
+      // Check if blocked
+      if (isBlockedBetween(candidateA.sessionId, candidateB.sessionId)) {
+        continue;
       }
+
+      // Check if recent pair cooldown applies
+      if (wasRecentlyMatched(candidateA.sessionId, candidateB.sessionId)) {
+        hasPendingCooldown = true;
+        continue;
+      }
+
+      matchedIndex = j;
+      break;
     }
 
     if (matchedIndex !== -1) {
@@ -218,6 +251,12 @@ function attemptMatchmaking() {
     } else {
       i++;
     }
+  }
+
+  if (hasPendingCooldown && matchmakingQueue.length >= 2) {
+    retryMatchTimeout = setTimeout(() => {
+      attemptMatchmaking();
+    }, 1500);
   }
 }
 

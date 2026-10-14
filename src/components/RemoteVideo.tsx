@@ -3,6 +3,8 @@ import {
   User,
   AlertTriangle,
   VolumeX,
+  VideoOff,
+  Mic,
 } from 'lucide-react';
 import { MatchmakingState } from '../types/chat';
 import { VideoPanel } from './VideoPanel';
@@ -27,7 +29,7 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
   hasActiveMatch: _hasActiveMatch,
   lang = 'ka',
   onOpenReportModal,
-  onOpenSetupModal,
+  onOpenSetupModal: _onOpenSetupModal,
   className = '',
   messages = [],
 }) => {
@@ -35,10 +37,49 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
   const t = translations[lang] || translations.ka;
   const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
   const [isAutoplayMuted, setIsAutoplayMuted] = useState<boolean>(false);
+  const [, setTrackUpdateTick] = useState<number>(0);
 
-  const hasVideoTrack = Boolean(
-    stream && stream.getVideoTracks().length > 0
+  // Track dynamically added/removed or muted/unmuted tracks on the active stream
+  useEffect(() => {
+    if (!stream) return;
+    const forceUpdate = () => setTrackUpdateTick((k) => k + 1);
+
+    stream.addEventListener('addtrack', forceUpdate);
+    stream.addEventListener('removetrack', forceUpdate);
+    stream.getTracks().forEach((track) => {
+      track.addEventListener('mute', forceUpdate);
+      track.addEventListener('unmute', forceUpdate);
+      track.addEventListener('ended', forceUpdate);
+    });
+
+    return () => {
+      stream.removeEventListener('addtrack', forceUpdate);
+      stream.removeEventListener('removetrack', forceUpdate);
+      stream.getTracks().forEach((track) => {
+        track.removeEventListener('mute', forceUpdate);
+        track.removeEventListener('unmute', forceUpdate);
+        track.removeEventListener('ended', forceUpdate);
+      });
+    };
+  }, [stream]);
+
+  const hasLiveVideoTrack = Boolean(
+    stream &&
+      stream
+        .getVideoTracks()
+        .some((track) => track.readyState === 'live')
   );
+
+  const hasLiveAudioTrack = Boolean(
+    stream &&
+      stream
+        .getAudioTracks()
+        .some((track) => track.readyState === 'live')
+  );
+
+  const isConnected =
+    matchState === MatchmakingState.Connected ||
+    (Boolean(stream) && (hasLiveVideoTrack || hasLiveAudioTrack));
 
   useEffect(() => {
     const videoEl = videoRef.current;
@@ -61,8 +102,8 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
         if (p !== undefined) {
           p.then(() => {
             setIsVideoPlaying(true);
-          }).catch(() => {
-            // If browser policy blocks unmuted autoplay, mute audio temporarily so video plays immediately
+          }).catch((_err) => {
+            // Autoplay policy prevented unmuted playback: fall back to muted so video frames render immediately
             videoEl.muted = true;
             setIsAutoplayMuted(true);
             videoEl.play().then(() => {
@@ -102,23 +143,27 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
     }
   };
 
-  const isConnectedWithVideo =
-    Boolean(stream) &&
-    (matchState === MatchmakingState.Connected ||
-      (hasVideoTrack && (matchState === MatchmakingState.Connecting || isVideoPlaying)));
+  const getStatusDetailText = (): string => {
+    if (statusDetail === 'stranger_skipped') return t.strangerSkipped;
+    if (statusDetail === 'stranger_left') return t.strangerLeft;
+    if (statusDetail === 'reconnecting_partner') return t.reconnectingPartner;
+    if (statusDetail === 'call_ended') return t.callEnded;
+    if (statusDetail === 'connection_failed') return t.connectionIssue;
+    return statusDetail || '';
+  };
 
   const isSearchingState =
     matchState === MatchmakingState.Searching ||
     matchState === MatchmakingState.Skipping ||
     matchState === MatchmakingState.Matched ||
-    (matchState === MatchmakingState.Connecting && !hasVideoTrack);
+    (matchState === MatchmakingState.Connecting && !isConnected);
 
   return (
     <VideoPanel className={className}>
-      {/* Subtle warm/indigo ambient backdrop when no remote video */}
+      {/* Subtle warm/indigo ambient backdrop */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-[radial-gradient(circle_at_65%_30%,rgba(99,102,241,0.10),transparent_60%),radial-gradient(circle_at_30%_75%,rgba(37,99,235,0.08),transparent_60%)]"
+        className="absolute inset-0 bg-[radial-gradient(circle_at_65%_30%,rgba(99,102,241,0.12),transparent_60%),radial-gradient(circle_at_30%_75%,rgba(37,99,235,0.08),transparent_60%)]"
       />
 
       {/* Live Remote Peer Video Stream */}
@@ -128,24 +173,52 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
         playsInline
         onClick={handleUnmute}
         className={`w-full h-full object-cover transition-opacity duration-200 cursor-pointer ${
-          isConnectedWithVideo ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          isConnected && hasLiveVideoTrack ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
 
       {/* Tap to Unmute Overlay if audio autoplay was restricted by mobile browser */}
-      {isConnectedWithVideo && isAutoplayMuted && (
+      {isConnected && isAutoplayMuted && (
         <button
           type="button"
           onClick={handleUnmute}
-          className="absolute bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0b101e]/85 backdrop-blur-md border border-amber-400/30 text-white text-[11px] sm:text-xs font-medium shadow-xl hover:bg-slate-800 transition-all cursor-pointer animate-pulse"
+          className="absolute bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0b101e]/90 backdrop-blur-md border border-amber-400/40 text-white text-[11px] sm:text-xs font-medium shadow-xl hover:bg-slate-800 transition-all cursor-pointer animate-pulse"
         >
           <VolumeX className="w-3.5 h-3.5 text-amber-400" />
           <span>{lang === 'ka' ? 'ხმის ჩასართავად დააჭირეთ აქ' : 'Tap to enable sound'}</span>
         </button>
       )}
 
+      {/* Connected State but Remote Video is Off / Audio Only */}
+      {isConnected && !hasLiveVideoTrack && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10">
+          <div className="relative flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 mb-3">
+            <span className="absolute inset-0 rounded-full bg-blue-500/10 border border-blue-400/20 animate-pulse" />
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-800/80 border border-white/15 flex items-center justify-center text-slate-300">
+              <User className="w-6 h-6 sm:w-7 sm:h-7 stroke-[1.8]" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-400">
+              <VideoOff className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs sm:text-sm font-semibold text-white">
+              {lang === 'ka' ? 'უცნობი დაკავშირებულია' : 'Stranger is connected'}
+            </p>
+            <p className="text-[11px] sm:text-xs text-slate-400 flex items-center justify-center gap-1.5">
+              <Mic className="w-3 h-3 text-emerald-400 animate-pulse" />
+              <span>
+                {lang === 'ka'
+                  ? 'კამერა გამორთულია (აუდიო აქტიურია)'
+                  : 'Camera is off (Audio active)'}
+              </span>
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Center Status Overlay when nobody is connected */}
-      {!isConnectedWithVideo && (
+      {!isConnected && (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center p-3 sm:p-6 text-center z-10"
           aria-live="polite"
@@ -171,7 +244,7 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
                   {matchState === MatchmakingState.Matched ||
                   matchState === MatchmakingState.Connecting
                     ? t.establishingConnection
-                    : t.waitingForUser}
+                    : getStatusDetailText() || t.waitingForUser}
                 </p>
               </div>
             </div>
@@ -184,7 +257,7 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
                 {t.connectionIssue}
               </p>
               <p className="text-[10px] sm:text-xs text-slate-400">
-                {statusDetail || t.connectionIssue}
+                {getStatusDetailText() || t.connectionIssue}
               </p>
             </div>
           ) : matchState === MatchmakingState.Disconnected ? (
@@ -194,7 +267,7 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
               </div>
               <div className="space-y-0.5 sm:space-y-1">
                 <p className="text-xs sm:text-sm font-medium text-white/90">
-                  {statusDetail || t.disconnected}
+                  {getStatusDetailText() || t.disconnected}
                 </p>
                 <p className="text-[11px] sm:text-xs text-slate-400">
                   {t.pressStartToFindNew}
@@ -241,6 +314,7 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
           </button>
         </div>
       </div>
+
       {/* Floating Chat Message Bubbles */}
       {messages.length > 0 && (
         <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-20 flex flex-col gap-1.5 pointer-events-none max-w-xs sm:max-w-sm">

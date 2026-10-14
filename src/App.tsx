@@ -349,14 +349,14 @@ export default function App() {
   const handleNext = useCallback(async () => {
     setMessages([]);
     let stream = localStreamRef.current;
-    if (!stream && !hasPermissions && !isRequestingPermission) {
+    if (!stream && !isRequestingPermission) {
       stream = await acquireMediaStream();
     }
     if (stream && matchmakingRef.current) {
       matchmakingRef.current.setLocalStream(stream);
     }
     matchmakingRef.current?.startOrNextSearch();
-  }, [acquireMediaStream, hasPermissions, isRequestingPermission]);
+  }, [acquireMediaStream, isRequestingPermission]);
 
   const handleConfirmReportAndBlock = useCallback((reason: string) => {
     matchmakingRef.current?.blockAndReportCurrentStranger(reason);
