@@ -1,0 +1,6 @@
+{
+  "name": "ChatAlternative",
+  "description": "A modern, minimal random video chat application with real-time WebRTC peer-to-peer video and audio matchmaking.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
