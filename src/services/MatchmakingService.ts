@@ -68,7 +68,10 @@ export class MatchmakingService {
     });
 
     this.signaling = new SignalingService({
-      onSessionInit: (sessionId) => {
+      onSessionInit: (sessionId, iceServers) => {
+        if (iceServers) {
+          this.webrtc.setIceServers(iceServers);
+        }
         this.callbacks.onBackendStatusChange(true, sessionId);
       },
       onConnectionChange: (connected) => {

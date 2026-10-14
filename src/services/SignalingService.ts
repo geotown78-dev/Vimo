@@ -8,7 +8,7 @@ import {
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 type SignalingCallbacks = {
-  onSessionInit?: (sessionId: string) => void;
+  onSessionInit?: (sessionId: string, iceServers?: RTCIceServer[]) => void;
   onConnectionChange?: (connected: boolean) => void;
   onMatchFound?: (event: MatchFoundEvent) => void;
   onSignalMessage?: (event: SignalMessageEvent) => void;
@@ -88,7 +88,8 @@ export class SignalingService {
     switch (data.type) {
       case 'session:init': {
         this.sessionId = String(data.sessionId);
-        this.callbacks.onSessionInit?.(this.sessionId);
+        const servers = Array.isArray(data.iceServers) ? (data.iceServers as RTCIceServer[]) : undefined;
+        this.callbacks.onSessionInit?.(this.sessionId, servers);
         break;
       }
       case 'match:found': {

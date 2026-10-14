@@ -228,6 +228,56 @@ async function startServer() {
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
+  function getIceServersConfig() {
+    const iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }> = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:stun.services.mozilla.com' },
+      { urls: 'stun:stun.sipgate.net:10000' },
+    ];
+
+    const turnUrl = process.env.TURN_URL || process.env.VITE_TURN_URL;
+    const turnUsername = process.env.TURN_USERNAME || process.env.VITE_TURN_USERNAME;
+    const turnCredential = process.env.TURN_CREDENTIAL || process.env.VITE_TURN_CREDENTIAL;
+
+    if (turnUrl) {
+      const urls = turnUrl.includes(',')
+        ? turnUrl.split(',').map((s) => s.trim()).filter(Boolean)
+        : turnUrl.trim();
+      iceServers.push({
+        urls,
+        ...(turnUsername ? { username: turnUsername.trim() } : {}),
+        ...(turnCredential ? { credential: turnCredential.trim() } : {}),
+      });
+    } else {
+      // Default fallback open TURN relay servers for peer-to-peer across NAT and mobile networks
+      iceServers.push({
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+          'turns:openrelay.metered.ca:443?transport=tcp',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      });
+    }
+
+    return iceServers;
+  }
+
+  // REST endpoint for runtime ICE servers (STUN & TURN)
+  app.get('/api/webrtc/ice-servers', (_req, res) => {
+    res.json({
+      ok: true,
+      iceServers: getIceServersConfig(),
+    });
+  });
+
   // REST endpoint for backend status & diagnostics
   app.get('/api/status', (_req, res) => {
     const supabaseConfigured = Boolean(
@@ -298,6 +348,7 @@ async function startServer() {
     sendToClient(ws, {
       type: 'session:init',
       sessionId,
+      iceServers: getIceServersConfig(),
     });
 
     ws.on('message', (rawData) => {

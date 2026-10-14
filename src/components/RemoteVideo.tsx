@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   User,
   AlertTriangle,
+  VolumeX,
 } from 'lucide-react';
 import { MatchmakingState } from '../types/chat';
 import { VideoPanel } from './VideoPanel';
@@ -32,6 +33,12 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const t = translations[lang] || translations.ka;
+  const [isVideoPlaying, setIsVideoPlaying] = useState<boolean>(false);
+  const [isAutoplayMuted, setIsAutoplayMuted] = useState<boolean>(false);
+
+  const hasLiveVideoTrack = Boolean(
+    stream && stream.getVideoTracks().some((t) => t.readyState === 'live')
+  );
 
   useEffect(() => {
     const videoEl = videoRef.current;
@@ -41,24 +48,62 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
       if (videoEl.srcObject !== stream) {
         videoEl.srcObject = stream;
       }
-      videoEl.play().catch(() => {
-        // Browser autoplay policy handled safely
-      });
+
+      const handlePlaying = () => setIsVideoPlaying(true);
+      const handleWaiting = () => setIsVideoPlaying(false);
+
+      videoEl.addEventListener('playing', handlePlaying);
+      videoEl.addEventListener('pause', handleWaiting);
+      videoEl.addEventListener('waiting', handleWaiting);
+
+      const tryPlay = () => {
+        videoEl.play().catch(() => {
+          // If browser policy blocks unmuted autoplay, mute audio temporarily so video plays immediately
+          videoEl.muted = true;
+          setIsAutoplayMuted(true);
+          videoEl.play().then(() => {
+            setIsVideoPlaying(true);
+          }).catch(() => {});
+        });
+      };
+
+      tryPlay();
+      videoEl.onloadedmetadata = () => {
+        tryPlay();
+      };
+
+      return () => {
+        videoEl.removeEventListener('playing', handlePlaying);
+        videoEl.removeEventListener('pause', handleWaiting);
+        videoEl.removeEventListener('waiting', handleWaiting);
+      };
     } else {
       videoEl.srcObject = null;
+      setIsVideoPlaying(false);
+      setIsAutoplayMuted(false);
     }
   }, [stream]);
 
+  // Click on video to unmute if muted by autoplay restrictions
+  const handleUnmute = () => {
+    if (videoRef.current && isAutoplayMuted) {
+      videoRef.current.muted = false;
+      setIsAutoplayMuted(false);
+    }
+  };
+
   const isConnectedWithVideo =
     Boolean(stream) &&
-    (matchState === MatchmakingState.Connected ||
-      matchState === MatchmakingState.Connecting);
+    hasLiveVideoTrack &&
+    isVideoPlaying &&
+    (matchState === MatchmakingState.Connected || matchState === MatchmakingState.Connecting);
 
   const isSearchingState =
     matchState === MatchmakingState.Searching ||
     matchState === MatchmakingState.Skipping ||
     matchState === MatchmakingState.Matched ||
-    (matchState === MatchmakingState.Connecting && !stream);
+    matchState === MatchmakingState.Connecting ||
+    (!isConnectedWithVideo && (matchState === MatchmakingState.Connected));
 
   return (
     <VideoPanel className={className}>
@@ -73,10 +118,23 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
         ref={videoRef}
         autoPlay
         playsInline
-        className={`w-full h-full object-cover transition-opacity duration-200 ${
+        onClick={handleUnmute}
+        className={`w-full h-full object-cover transition-opacity duration-200 cursor-pointer ${
           isConnectedWithVideo ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
+
+      {/* Tap to Unmute Overlay if audio autoplay was restricted by mobile browser */}
+      {isConnectedWithVideo && isAutoplayMuted && (
+        <button
+          type="button"
+          onClick={handleUnmute}
+          className="absolute bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0b101e]/85 backdrop-blur-md border border-amber-400/30 text-white text-[11px] sm:text-xs font-medium shadow-xl hover:bg-slate-800 transition-all cursor-pointer animate-pulse"
+        >
+          <VolumeX className="w-3.5 h-3.5 text-amber-400" />
+          <span>{lang === 'ka' ? 'ხმის ჩასართავად დააჭირეთ აქ' : 'Tap to enable sound'}</span>
+        </button>
+      )}
 
       {/* Center Status Overlay when nobody is connected */}
       {!isConnectedWithVideo && (

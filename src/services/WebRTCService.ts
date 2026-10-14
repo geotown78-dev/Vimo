@@ -18,17 +18,32 @@ export class WebRTCService {
   private pendingCandidates: RTCIceCandidateInit[] = [];
   private isRemoteDescriptionSet = false;
   private callbacks: WebRTCCallbacks;
+  private configuredIceServers: RTCIceServer[] | null = null;
 
   constructor(callbacks: WebRTCCallbacks) {
     this.callbacks = callbacks;
   }
 
+  public setIceServers(servers: RTCIceServer[]): void {
+    if (Array.isArray(servers) && servers.length > 0) {
+      this.configuredIceServers = servers;
+    }
+  }
+
   private getIceServers(): RTCIceServer[] {
+    if (this.configuredIceServers && this.configuredIceServers.length > 0) {
+      return this.configuredIceServers;
+    }
+
     const iceServers: RTCIceServer[] = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:stun.services.mozilla.com' },
+      { urls: 'stun:stun.sipgate.net:10000' },
     ];
 
     const turnUrl = import.meta.env.VITE_TURN_URL?.trim();
@@ -36,10 +51,25 @@ export class WebRTCService {
     const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL?.trim();
 
     if (turnUrl) {
+      const urls = turnUrl.includes(',')
+        ? turnUrl.split(',').map((u: string) => u.trim()).filter(Boolean)
+        : turnUrl;
       iceServers.push({
-        urls: turnUrl,
+        urls,
         ...(turnUsername ? { username: turnUsername } : {}),
         ...(turnCredential ? { credential: turnCredential } : {}),
+      });
+    } else {
+      // Default public TURN relay servers for cross-network and mobile carrier traversal
+      iceServers.push({
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+          'turns:openrelay.metered.ca:443?transport=tcp',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
       });
     }
 
@@ -51,7 +81,7 @@ export class WebRTCService {
     localStream: MediaStream | null,
     initiator: boolean
   ): Promise<void> {
-    // Always clean up any previous connection before creating a new one
+    // Clean up any existing connection before initializing
     this.cleanupConnection();
 
     this.activeMatchId = matchId;
@@ -61,34 +91,36 @@ export class WebRTCService {
     const pc = new RTCPeerConnection({
       iceServers: this.getIceServers(),
       iceCandidatePoolSize: 4,
+      bundlePolicy: 'max-bundle' as RTCBundlePolicy,
+      rtcpMuxPolicy: 'require' as RTCRtcpMuxPolicy,
     });
 
     this.peerConnection = pc;
 
-    // Attach local audio/video tracks if available
+    // Attach local tracks if available
     if (localStream) {
       localStream.getTracks().forEach((track) => {
         pc.addTrack(track, localStream);
       });
     } else {
-      // Ensure we can still receive audio and video even if local camera is off
+      // Allow receiving remote video/audio even if local devices are not broadcasting
       pc.addTransceiver('video', { direction: 'recvonly' });
       pc.addTransceiver('audio', { direction: 'recvonly' });
     }
 
-    // Handle incoming tracks from remote peer
-    pc.ontrack = (event: RTCTrackEvent) => {
-      if (this.activeMatchId !== matchId) return; // Guard against stale connections
+    // Handle incoming tracks from the remote peer
+    pc.ontrack = (_event: RTCTrackEvent) => {
+      if (this.activeMatchId !== matchId) return;
 
-      if (event.streams && event.streams[0]) {
-        this.remoteStream = event.streams[0];
-      } else {
-        if (!this.remoteStream) {
-          this.remoteStream = new MediaStream();
-        }
-        this.remoteStream.addTrack(event.track);
-      }
-      this.callbacks.onRemoteStream(this.remoteStream);
+      const activeTracks = pc
+        .getReceivers()
+        .map((r) => r.track)
+        .filter((track): track is MediaStreamTrack => Boolean(track) && track.readyState === 'live');
+
+      // Create a fresh MediaStream instance with all active tracks
+      const updatedStream = new MediaStream(activeTracks);
+      this.remoteStream = updatedStream;
+      this.callbacks.onRemoteStream(updatedStream);
     };
 
     // Handle ICE candidates
@@ -99,7 +131,7 @@ export class WebRTCService {
       }
     };
 
-    // Monitor connection state changes
+    // Monitor peer connection state
     pc.onconnectionstatechange = () => {
       if (this.activeMatchId !== matchId || !this.peerConnection) return;
       const state = this.peerConnection.connectionState;
@@ -110,15 +142,28 @@ export class WebRTCService {
       }
     };
 
+    // Monitor ICE connection state
     pc.oniceconnectionstatechange = () => {
       if (this.activeMatchId !== matchId || !this.peerConnection) return;
       const iceState = this.peerConnection.iceConnectionState;
-      if (iceState === 'failed') {
+
+      if (iceState === 'connected' || iceState === 'completed') {
+        this.callbacks.onConnectionStateChange(matchId, 'connected');
+      } else if (iceState === 'failed') {
+        // Attempt ICE restart if supported, otherwise report failure
+        if (typeof pc.restartIce === 'function' && initiator) {
+          try {
+            pc.restartIce();
+            return;
+          } catch {
+            // Fall through to error callback
+          }
+        }
         this.callbacks.onError(matchId, 'Peer-to-peer connection failed across networks.');
       }
     };
 
-    // If this client is the designated initiator, create and send the SDP offer
+    // If designated initiator, create and send the SDP offer
     if (initiator) {
       try {
         const offer = await pc.createOffer({
@@ -140,7 +185,6 @@ export class WebRTCService {
     signalType: SignalPayloadType,
     payload: RTCSessionDescriptionInit | RTCIceCandidateInit | Record<string, unknown>
   ): Promise<void> {
-    // Prevent stale WebRTC connections from affecting a newer match
     if (!this.peerConnection || this.activeMatchId !== matchId) {
       return;
     }
@@ -149,8 +193,7 @@ export class WebRTCService {
 
     try {
       if (signalType === 'offer') {
-        const offerDesc = new RTCSessionDescription(payload as RTCSessionDescriptionInit);
-        await pc.setRemoteDescription(offerDesc);
+        await pc.setRemoteDescription(payload as RTCSessionDescriptionInit);
         if (this.activeMatchId !== matchId) return;
         this.isRemoteDescriptionSet = true;
         await this.flushPendingCandidates(matchId);
@@ -160,9 +203,8 @@ export class WebRTCService {
         await pc.setLocalDescription(answer);
         this.callbacks.onSignal(matchId, 'answer', answer);
       } else if (signalType === 'answer') {
-        const answerDesc = new RTCSessionDescription(payload as RTCSessionDescriptionInit);
         if (pc.signalingState === 'have-local-offer') {
-          await pc.setRemoteDescription(answerDesc);
+          await pc.setRemoteDescription(payload as RTCSessionDescriptionInit);
           if (this.activeMatchId !== matchId) return;
           this.isRemoteDescriptionSet = true;
           await this.flushPendingCandidates(matchId);
@@ -172,7 +214,11 @@ export class WebRTCService {
         if (!candidateInit || !candidateInit.candidate) return;
 
         if (this.isRemoteDescriptionSet && pc.remoteDescription) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+          try {
+            await pc.addIceCandidate(candidateInit);
+          } catch (err) {
+            console.warn('Failed to add received ICE candidate:', err);
+          }
         } else {
           this.pendingCandidates.push(candidateInit);
         }
@@ -188,9 +234,9 @@ export class WebRTCService {
       const candidateInit = this.pendingCandidates.shift();
       if (candidateInit) {
         try {
-          await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit));
+          await this.peerConnection.addIceCandidate(candidateInit);
         } catch (err) {
-          console.error('Failed to add queued ICE candidate:', err);
+          console.warn('Failed to add queued ICE candidate:', err);
         }
       }
     }
