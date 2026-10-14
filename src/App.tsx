@@ -12,7 +12,8 @@ import { LanguageSelector } from './components/LanguageSelector';
 import { VimoLogo } from './components/VimoLogo';
 import { MatchmakingService } from './services/MatchmakingService';
 import { MatchmakingState } from './types/chat';
-import { Language } from './lib/i18n';
+import { Language, translations } from './lib/i18n';
+import { ShieldAlert, Lock } from 'lucide-react';
 
 export default function App() {
   // Language state (defaulting to Georgian, persisted in localStorage)
@@ -119,6 +120,13 @@ export default function App() {
     };
   }, []);
 
+  // Check if browser context is insecure (WebRTC/getUserMedia is blocked by browsers on HTTP)
+  const [isInsecureContext] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    return (!window.isSecureContext || window.location.protocol !== 'https:') && !isLocal;
+  });
+
   // Request camera and microphone stream explicitly
   const acquireMediaStream = useCallback(
     async (options?: {
@@ -128,7 +136,11 @@ export default function App() {
       DesiredCameraEnabled?: boolean;
     }): Promise<MediaStream | null> => {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setPermissionError('Media devices are not supported in this browser context.');
+        if (isInsecureContext) {
+          setPermissionError('HTTPS_REQUIRED');
+        } else {
+          setPermissionError('Media devices are not supported in this browser context.');
+        }
         return null;
       }
 
@@ -232,6 +244,13 @@ export default function App() {
       cancelled = true;
     };
   }, [acquireMediaStream]);
+
+  // Automatically flag HTTPS requirement if opened on insecure HTTP
+  useEffect(() => {
+    if (isInsecureContext) {
+      setPermissionError('HTTPS_REQUIRED');
+    }
+  }, [isInsecureContext]);
 
   // Clean up local media tracks on unmount
   useEffect(() => {
@@ -356,6 +375,26 @@ export default function App() {
         <VimoLogo size={22} />
         <LanguageSelector currentLang={lang} onSelectLang={handleSelectLang} />
       </header>
+
+      {/* HTTPS Notice Banner if visited over insecure HTTP */}
+      {isInsecureContext && (
+        <div className="relative z-30 w-full max-w-[1440px] mb-1 sm:mb-2 px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs sm:text-sm flex flex-wrap items-center justify-between gap-2 shadow-sm animate-in fade-in duration-300">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="font-medium">{translations[lang].insecureNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              window.location.protocol = 'https:';
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs shadow transition-colors cursor-pointer"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            {translations[lang].switchToHttps}
+          </button>
+        </div>
+      )}
 
       {/* Main Stage Grid (Mobile: Stranger BIG top, You SMALL bottom-left, Controls bottom-right; Desktop: Side-by-side square panels + centered bottom toolbar) */}
       <div className="relative z-10 w-full flex-1 min-h-0 flex items-center justify-center px-1 sm:px-2 py-0.5 sm:py-1 max-w-[1440px]">

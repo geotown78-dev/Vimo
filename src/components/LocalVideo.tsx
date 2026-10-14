@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Video, VideoOff, SwitchCamera, AlertCircle, Mic, MicOff } from 'lucide-react';
+import { Video, VideoOff, SwitchCamera, AlertCircle, Mic, MicOff, ShieldAlert, Lock } from 'lucide-react';
 import { VideoPanel } from './VideoPanel';
 import { Language, translations } from '../lib/i18n';
 
@@ -86,6 +86,28 @@ export const LocalVideo: React.FC<LocalVideoProps> = React.memo(({
               <p className="text-[11px] sm:text-xs text-slate-400">
                 {t.allowAccessPrompt}
               </p>
+            </div>
+          ) : permissionError === 'HTTPS_REQUIRED' ? (
+            <div className="flex flex-col items-center gap-2 sm:gap-2.5 max-w-xs px-3 text-center">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400">
+                <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+              <p className="text-xs sm:text-sm font-semibold text-white/95">
+                {t.httpsRequiredTitle}
+              </p>
+              <p className="text-[10px] sm:text-xs text-slate-300 leading-relaxed">
+                {t.httpsRequiredDesc}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.protocol = 'https:';
+                }}
+                className="mt-1 px-4 py-1.5 sm:px-5 sm:py-2 rounded-full text-xs font-semibold text-slate-900 bg-amber-400 hover:bg-amber-300 shadow-md transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                {t.switchToHttps}
+              </button>
             </div>
           ) : permissionError ? (
             <div className="flex flex-col items-center gap-2.5 sm:gap-3 max-w-xs px-2">

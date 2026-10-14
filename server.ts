@@ -468,6 +468,8 @@ async function startServer() {
     });
   });
 
+  app.set('trust proxy', 1);
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
