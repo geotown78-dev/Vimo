@@ -6,8 +6,8 @@ WORKDIR /app
 # Copy package definitions
 COPY package*.json ./
 
-# Install all dependencies (needed for Vite build)
-RUN npm install
+# Install dependencies (with legacy-peer-deps to prevent peer dependency resolution errors)
+RUN npm install --legacy-peer-deps
 
 # Copy source code and assets
 COPY . .
@@ -26,8 +26,8 @@ ENV PORT=3000
 # Copy package definitions
 COPY package*.json ./
 
-# Install production dependencies (includes express, ws, tsx, vite)
-RUN npm install --omit=dev
+# Copy installed node_modules directly from builder to avoid duplicate download & resolution errors
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy built frontend assets from builder stage
 COPY --from=builder /app/dist ./dist
