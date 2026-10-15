@@ -76,6 +76,15 @@ function sendToClient(ws: WebSocket, message: Record<string, unknown>) {
   }
 }
 
+// Broadcast exact online user count to all active WebSocket clients
+function broadcastUserCount() {
+  const count = userSessions.size;
+  const message = { type: 'online:count', count };
+  for (const session of userSessions.values()) {
+    sendToClient(session.ws, message);
+  }
+}
+
 function isBlockedBetween(user1: string, user2: string): boolean {
   return blockRecords.some(
     (b) =>
@@ -330,6 +339,15 @@ async function startServer() {
     });
   });
 
+  // REST endpoint for real-time online user count with maximum precision
+  app.get('/api/online-count', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.json({
+      ok: true,
+      count: userSessions.size,
+    });
+  });
+
   // REST endpoint for backend status & diagnostics
   app.get('/api/status', (_req, res) => {
     const supabaseConfigured = Boolean(
@@ -401,7 +419,10 @@ async function startServer() {
       type: 'session:init',
       sessionId,
       iceServers: getIceServersConfig(),
+      onlineCount: userSessions.size,
     });
+
+    broadcastUserCount();
 
     ws.on('message', (rawData) => {
       try {
@@ -560,6 +581,7 @@ async function startServer() {
         terminateActiveMatchForUser(sessionId, 'peer-disconnected');
       }
       userSessions.delete(sessionId);
+      broadcastUserCount();
     });
 
     ws.on('error', () => {
@@ -568,8 +590,33 @@ async function startServer() {
         terminateActiveMatchForUser(sessionId, 'peer-disconnected');
       }
       userSessions.delete(sessionId);
+      broadcastUserCount();
     });
   });
+
+  // Prune dead or unacknowledged sockets every 10 seconds for maximum user count accuracy
+  setInterval(() => {
+    let changed = false;
+    const now = Date.now();
+    for (const [id, s] of userSessions.entries()) {
+      if (s.ws.readyState !== WebSocket.OPEN || now - s.lastSeenAt > 50000) {
+        try {
+          s.ws.terminate();
+        } catch {
+          // Ignore terminate errors
+        }
+        removeFromQueue(id);
+        if (s.currentMatchId) {
+          terminateActiveMatchForUser(id, 'peer-disconnected');
+        }
+        userSessions.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) {
+      broadcastUserCount();
+    }
+  }, 10000);
 
   app.set('trust proxy', 1);
 

@@ -12,6 +12,7 @@ export interface MatchmakingServiceCallbacks {
   onRemoteStreamChange: (stream: MediaStream | null) => void;
   onMatchInfoChange: (matchId: string | null, peerId: string | null) => void;
   onBackendStatusChange: (connected: boolean, sessionId: string | null) => void;
+  onOnlineCountChange?: (count: number) => void;
 }
 
 export class MatchmakingService {
@@ -87,6 +88,9 @@ export class MatchmakingService {
       onMatchFound: (event) => this.handleMatchFound(event),
       onSignalMessage: (event) => this.handleSignalMessage(event),
       onMatchEnded: (event) => this.handleMatchEnded(event),
+      onOnlineCountChange: (count) => {
+        this.callbacks.onOnlineCountChange?.(count);
+      },
       onError: (message) => {
         this.isRequestInFlight = false;
         if (this.userExplicitlyStopped) {

@@ -14,6 +14,7 @@ type SignalingCallbacks = {
   onSignalMessage?: (event: SignalMessageEvent) => void;
   onMatchEnded?: (event: MatchEndedEvent) => void;
   onError?: (message: string) => void;
+  onOnlineCountChange?: (count: number) => void;
 };
 
 export class SignalingService {
@@ -90,6 +91,17 @@ export class SignalingService {
         this.sessionId = String(data.sessionId);
         const servers = Array.isArray(data.iceServers) ? (data.iceServers as RTCIceServer[]) : undefined;
         this.callbacks.onSessionInit?.(this.sessionId, servers);
+        if (typeof data.onlineCount === 'number') {
+          this.callbacks.onOnlineCountChange?.(data.onlineCount);
+        }
+        break;
+      }
+      case 'online:count':
+      case 'presence:count': {
+        const count = Number(data.count);
+        if (!isNaN(count)) {
+          this.callbacks.onOnlineCountChange?.(count);
+        }
         break;
       }
       case 'match:found': {

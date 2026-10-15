@@ -2,6 +2,8 @@ export type Language = 'en' | 'ka';
 
 export const translations = {
   en: {
+    onlineCount: 'online',
+    usersOnlineTooltip: 'Users currently on site',
     you: 'You',
     stranger: 'Stranger',
     flipCamera: 'Flip Camera',
@@ -71,6 +73,8 @@ export const translations = {
     ],
   },
   ka: {
+    onlineCount: 'ონლაინ',
+    usersOnlineTooltip: 'საიტზე მყოფი მომხმარებლები',
     you: 'შენ',
     stranger: 'უცნობი',
     flipCamera: 'კამერის შეცვლა',

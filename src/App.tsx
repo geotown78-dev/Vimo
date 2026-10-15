@@ -9,6 +9,7 @@ import { RemoteVideo } from './components/RemoteVideo';
 import { CallControls } from './components/CallControls';
 import { SafetyAndSetupModal } from './components/SafetyAndSetupModal';
 import { LanguageSelector } from './components/LanguageSelector';
+import { OnlineUserCount } from './components/OnlineUserCount';
 import { VimoLogo } from './components/VimoLogo';
 import { MatchmakingService } from './services/MatchmakingService';
 import { MatchmakingState } from './types/chat';
@@ -62,6 +63,9 @@ export default function App() {
   // Discreet modal state (Report/Block or Backend Setup info)
   const [activeModal, setActiveModal] = useState<'report' | 'setup' | null>(null);
 
+  // Exact real-time user count of people currently on site
+  const [onlineCount, setOnlineCount] = useState<number>(1);
+
   const matchmakingRef = useRef<MatchmakingService | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const isMicEnabledRef = useRef<boolean>(isMicEnabled);
@@ -113,6 +117,9 @@ export default function App() {
         setWsConnected(connected);
         setSessionId(sessId);
       },
+      onOnlineCountChange: (count) => {
+        setOnlineCount(Math.max(1, count));
+      },
     });
 
     matchmakingRef.current = service;
@@ -124,6 +131,31 @@ export default function App() {
     return () => {
       service.destroy();
       matchmakingRef.current = null;
+    };
+  }, []);
+
+  // Periodic REST synchronization for maximum precision across tab sleeps and network recovery
+  useEffect(() => {
+    let isMounted = true;
+    const fetchExactCount = async () => {
+      try {
+        const res = await fetch('/api/online-count', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && typeof data.count === 'number') {
+            setOnlineCount(Math.max(1, data.count));
+          }
+        }
+      } catch {
+        // Ignore background fetch error
+      }
+    };
+
+    fetchExactCount();
+    const interval = setInterval(fetchExactCount, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -388,10 +420,11 @@ export default function App() {
         className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_60%_50%_at_12%_10%,rgba(29,78,216,0.13),transparent_70%),radial-gradient(ellipse_60%_50%_at_88%_12%,rgba(109,40,217,0.11),transparent_70%),radial-gradient(ellipse_55%_45%_at_50%_96%,rgba(79,70,229,0.16),transparent_70%)]"
       />
 
-      {/* Top Header Bar: Vimo Brand (Left) & Language Selector (Right) */}
+      {/* Top Header Bar: Brand (Left) & Online Counter + Language Selector (Right) */}
       <header className="relative z-30 w-full max-w-[1440px] flex items-center justify-between px-1 sm:px-2 pt-0.5 pb-1 sm:pb-2 shrink-0">
         <VimoLogo size={22} />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          <OnlineUserCount count={onlineCount} lang={lang} />
           <LanguageSelector currentLang={lang} onSelectLang={handleSelectLang} />
         </div>
       </header>
