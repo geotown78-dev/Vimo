@@ -13,7 +13,7 @@ import { VimoLogo } from './components/VimoLogo';
 import { MatchmakingService } from './services/MatchmakingService';
 import { MatchmakingState } from './types/chat';
 import { Language, translations } from './lib/i18n';
-import { ShieldAlert, Lock } from 'lucide-react';
+import { ShieldAlert, Lock, Activity } from 'lucide-react';
 
 export default function App() {
   // Language state (defaulting to Georgian, persisted in localStorage)
@@ -385,10 +385,23 @@ export default function App() {
         className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_60%_50%_at_12%_10%,rgba(29,78,216,0.13),transparent_70%),radial-gradient(ellipse_60%_50%_at_88%_12%,rgba(109,40,217,0.11),transparent_70%),radial-gradient(ellipse_55%_45%_at_50%_96%,rgba(79,70,229,0.16),transparent_70%)]"
       />
 
-      {/* Top Header Bar: Vimo Brand (Left) & Language Selector (Right) */}
+      {/* Top Header Bar: Vimo Brand (Left) & Diagnostics / Language Selector (Right) */}
       <header className="relative z-30 w-full max-w-[1440px] flex items-center justify-between px-1 sm:px-2 pt-0.5 pb-1 sm:pb-2 shrink-0">
         <VimoLogo size={22} />
-        <LanguageSelector currentLang={lang} onSelectLang={handleSelectLang} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveModal('setup')}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+            title={lang === 'ka' ? 'კავშირის დიაგნოსტიკა' : 'Connection Diagnostics'}
+          >
+            <Activity className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">
+              {lang === 'ka' ? 'დიაგნოსტიკა' : 'Diagnostics'}
+            </span>
+          </button>
+          <LanguageSelector currentLang={lang} onSelectLang={handleSelectLang} />
+        </div>
       </header>
 
       {/* HTTPS Notice Banner if visited over insecure HTTP */}
@@ -471,6 +484,20 @@ export default function App() {
         wsConnected={wsConnected}
         sessionId={sessionId}
         matchState={matchState}
+        hasPermissions={hasPermissions}
+        isInsecureContext={isInsecureContext}
+        hasRemoteVideo={Boolean(
+          remoteStream &&
+            remoteStream
+              .getVideoTracks()
+              .some((t) => t.readyState === 'live')
+        )}
+        hasRemoteAudio={Boolean(
+          remoteStream &&
+            remoteStream
+              .getAudioTracks()
+              .some((t) => t.readyState === 'live')
+        )}
         lang={lang}
         onConfirmReportAndBlock={handleConfirmReportAndBlock}
       />

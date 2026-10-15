@@ -69,6 +69,17 @@ export class WebRTCService {
         ...(turnUsername ? { username: turnUsername } : {}),
         ...(turnCredential ? { credential: turnCredential } : {}),
       });
+
+      // Secondary backup TURN relay servers in case custom VPS is restarting or firewall has UDP issues
+      iceServers.push({
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      });
     } else {
       // Default public TURN relay servers for cross-network and mobile carrier traversal
       iceServers.push({

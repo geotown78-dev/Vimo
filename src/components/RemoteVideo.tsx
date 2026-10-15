@@ -44,7 +44,25 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
     if (!stream) return;
     const forceUpdate = () => setTrackUpdateTick((k) => k + 1);
 
-    stream.addEventListener('addtrack', forceUpdate);
+    const onTrackAdded = (e: MediaStreamTrackEvent) => {
+      forceUpdate();
+      if (e.track) {
+        e.track.addEventListener('mute', forceUpdate);
+        e.track.addEventListener('unmute', forceUpdate);
+        e.track.addEventListener('ended', forceUpdate);
+      }
+      if (videoRef.current) {
+        videoRef.current.play().catch(() => {
+          if (videoRef.current) {
+            videoRef.current.muted = true;
+            setIsAutoplayMuted(true);
+            videoRef.current.play().catch(() => {});
+          }
+        });
+      }
+    };
+
+    stream.addEventListener('addtrack', onTrackAdded);
     stream.addEventListener('removetrack', forceUpdate);
     stream.getTracks().forEach((track) => {
       track.addEventListener('mute', forceUpdate);
@@ -53,7 +71,7 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
     });
 
     return () => {
-      stream.removeEventListener('addtrack', forceUpdate);
+      stream.removeEventListener('addtrack', onTrackAdded);
       stream.removeEventListener('removetrack', forceUpdate);
       stream.getTracks().forEach((track) => {
         track.removeEventListener('mute', forceUpdate);
@@ -64,6 +82,13 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
   }, [stream]);
 
   const hasLiveVideoTrack = Boolean(
+    stream &&
+      stream
+        .getVideoTracks()
+        .some((track) => track.readyState === 'live' && !track.muted)
+  );
+
+  const hasAnyVideoTrack = Boolean(
     stream &&
       stream
         .getVideoTracks()
@@ -79,7 +104,7 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
 
   const isConnected =
     matchState === MatchmakingState.Connected ||
-    (Boolean(stream) && (hasLiveVideoTrack || hasLiveAudioTrack));
+    (Boolean(stream) && (hasAnyVideoTrack || hasLiveAudioTrack));
 
   useEffect(() => {
     const videoEl = videoRef.current;
@@ -133,13 +158,16 @@ export const RemoteVideo: React.FC<RemoteVideoProps> = ({
       setIsVideoPlaying(false);
       setIsAutoplayMuted(false);
     }
-  }, [stream]);
+  }, [stream, isConnected, hasAnyVideoTrack]);
 
   // Click on video to unmute if muted by autoplay restrictions
   const handleUnmute = () => {
-    if (videoRef.current && isAutoplayMuted) {
-      videoRef.current.muted = false;
-      setIsAutoplayMuted(false);
+    if (videoRef.current) {
+      if (isAutoplayMuted) {
+        videoRef.current.muted = false;
+        setIsAutoplayMuted(false);
+      }
+      videoRef.current.play().catch(() => {});
     }
   };
 

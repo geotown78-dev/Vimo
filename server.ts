@@ -294,6 +294,17 @@ async function startServer() {
         ...(turnUsername ? { username: turnUsername.trim() } : {}),
         ...(turnCredential ? { credential: turnCredential.trim() } : {}),
       });
+
+      // Secondary backup TURN relay servers in case custom VPS is restarting or firewall has UDP issues
+      iceServers.push({
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      });
     } else {
       // Default fallback open TURN relay servers for peer-to-peer across NAT and mobile carrier networks
       iceServers.push({
