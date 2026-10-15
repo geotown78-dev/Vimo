@@ -31,8 +31,11 @@ export const VimoLogo: React.FC<{ className?: string; size?: number }> = ({
     <div className={`flex items-center gap-2 select-none ${className}`}>
       <VimoIcon size={size} />
       <span className="text-[17px] sm:text-[18px] font-bold tracking-tight text-white/95 leading-none">
-        Vimo
+        Yumi<span className="text-blue-400">.ge</span>
       </span>
     </div>
   );
 };
+
+export const YumiIcon = VimoIcon;
+export const YumiLogo = VimoLogo;
