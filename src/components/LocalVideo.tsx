@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Video, VideoOff, SwitchCamera, AlertCircle, Mic, MicOff, ShieldAlert, Lock } from 'lucide-react';
+import { Video, VideoOff, AlertCircle, ShieldAlert, Lock } from 'lucide-react';
 import { VideoPanel } from './VideoPanel';
 import { Language, translations } from '../lib/i18n';
 
@@ -11,7 +11,7 @@ interface LocalVideoProps {
   permissionError: string | null;
   isMirrored: boolean;
   lang?: Language;
-  onFlipCamera: () => void;
+  onFlipCamera?: () => void;
   onRequestPermissions: () => void;
   isMicEnabled?: boolean;
   onToggleMic?: () => void;
@@ -26,10 +26,10 @@ export const LocalVideo: React.FC<LocalVideoProps> = React.memo(({
   permissionError,
   isMirrored,
   lang = 'ka',
-  onFlipCamera,
+  onFlipCamera: _onFlipCamera,
   onRequestPermissions,
-  isMicEnabled = true,
-  onToggleMic,
+  isMicEnabled: _isMicEnabled = true,
+  onToggleMic: _onToggleMic,
   className = '',
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -172,44 +172,6 @@ export const LocalVideo: React.FC<LocalVideoProps> = React.memo(({
         </div>
       </div>
 
-      {/* Bottom Controls Overlay on Self Video: Flip Camera & Mic Indicator */}
-      <div className="absolute bottom-1.5 left-1.5 right-1.5 sm:bottom-2.5 sm:left-2.5 sm:right-2.5 md:bottom-3 md:left-3 md:right-3 z-20 flex items-center justify-between pointer-events-none">
-        {/* Flip Camera */}
-        <button
-          type="button"
-          onClick={onFlipCamera}
-          aria-label={t.flipCamera}
-          title={t.flipCamera}
-          className="pointer-events-auto inline-flex items-center justify-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-[#090D16]/85 hover:bg-[#131B2E] active:scale-95 backdrop-blur-md border border-white/15 text-[11px] sm:text-xs font-medium text-white transition-all cursor-pointer shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-        >
-          <SwitchCamera className="w-3.5 h-3.5 text-white stroke-[2] shrink-0" />
-          <span className="hidden sm:inline leading-none whitespace-nowrap">{t.flipCamera}</span>
-        </button>
-
-        {/* Microphone Toggle/Indicator on Self-View */}
-        {onToggleMic && (
-          <button
-            type="button"
-            onClick={onToggleMic}
-            aria-label={isMicEnabled ? t.muteMic : t.unmuteMic}
-            title={isMicEnabled ? t.muteMic : t.unmuteMic}
-            className={`pointer-events-auto inline-flex items-center justify-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-full backdrop-blur-md border transition-all cursor-pointer active:scale-95 shadow-md focus-visible:outline-none focus-visible:ring-2 ${
-              isMicEnabled
-                ? 'bg-[#090D16]/85 hover:bg-[#131B2E] border-white/15 text-white'
-                : 'bg-rose-600/90 hover:bg-rose-600 border-rose-500/50 text-white'
-            }`}
-          >
-            {isMicEnabled ? (
-              <Mic className="w-3.5 h-3.5 text-white stroke-[2] shrink-0" />
-            ) : (
-              <MicOff className="w-3.5 h-3.5 text-white stroke-[2] shrink-0" />
-            )}
-            <span className="hidden md:inline text-[11px] font-medium leading-none whitespace-nowrap">
-              {isMicEnabled ? (lang === 'ka' ? 'მიკროფონი' : 'Mic') : (lang === 'ka' ? 'გათიშულია' : 'Muted')}
-            </span>
-          </button>
-        )}
-      </div>
     </VideoPanel>
   );
 });
