@@ -11,6 +11,9 @@ import {
   Database,
   ArrowRight,
   Sparkles,
+  Copy,
+  Check,
+  FileCode,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Language, translations } from '../lib/i18n';
@@ -47,6 +50,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
   const [dbSuccess, setDbSuccess] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   if (!isOpen) return null;
 
@@ -403,6 +407,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   className="ml-auto px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold transition-colors cursor-pointer"
                 >
                   {t.saveCredentials}
+                </button>
+              </div>
+
+              {/* Copy SQL Schema Helper */}
+              <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
+                  <FileCode className="w-3 h-3 text-blue-400" />
+                  public.profiles (SQL სქემა)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sql = `-- Yumi.ge profiles schema
+create table if not exists public.profiles (
+  id uuid references auth.users on delete cascade primary key,
+  email text not null,
+  display_name text,
+  role text default 'user',
+  avatar_url text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.profiles enable row level security;
+create policy "Public profiles are viewable by everyone" on public.profiles for select using (true);
+create policy "Users can insert their own profile" on public.profiles for insert with check (auth.uid() = id);
+create policy "Users can update their own profile" on public.profiles for update using (auth.uid() = id);`;
+                    navigator.clipboard.writeText(sql);
+                    setCopiedSql(true);
+                    setTimeout(() => setCopiedSql(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
+                >
+                  {copiedSql ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      დაკოპირდა!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      SQL-ის კოპირება
+                    </>
+                  )}
                 </button>
               </div>
             </form>
