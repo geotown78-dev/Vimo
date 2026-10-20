@@ -330,6 +330,68 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
+  // Reverse proxy for Supabase API requests to completely eliminate Browser Mixed-Content errors
+  // when client is on HTTPS (https://yumi.ge) and Supabase Kong is running over HTTP.
+  app.all('/api/supabase-proxy/*', async (req, res) => {
+    try {
+      const targetBase =
+        (req.headers['x-supabase-target-url'] as string) ||
+        process.env.SUPABASE_BACKEND_URL ||
+        process.env.VITE_SUPABASE_URL ||
+        'http://supabasekong-o13hsliyqabiynbvsurm3t1c.5.83.153.142.sslip.io';
+
+      const cleanBase = targetBase.trim().replace(/\/+$/, '');
+      const subPath = req.url.replace(/^\/api\/supabase-proxy/, '');
+      const targetUrl = `${cleanBase}${subPath}`;
+
+      const headers: Record<string, string> = {};
+      for (const [key, value] of Object.entries(req.headers)) {
+        const lower = key.toLowerCase();
+        if (
+          lower !== 'host' &&
+          lower !== 'connection' &&
+          lower !== 'content-length' &&
+          lower !== 'x-supabase-target-url' &&
+          typeof value === 'string'
+        ) {
+          headers[key] = value;
+        }
+      }
+
+      const fetchOptions: RequestInit = {
+        method: req.method,
+        headers,
+      };
+
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        if (typeof req.body === 'string') {
+          fetchOptions.body = req.body;
+        } else if (req.body && typeof req.body === 'object') {
+          fetchOptions.body = JSON.stringify(req.body);
+          if (!headers['content-type']) {
+            headers['content-type'] = 'application/json';
+          }
+        }
+      }
+
+      const response = await fetch(targetUrl, fetchOptions);
+
+      res.status(response.status);
+      response.headers.forEach((val, key) => {
+        const lower = key.toLowerCase();
+        if (lower !== 'content-encoding' && lower !== 'transfer-encoding') {
+          res.setHeader(key, val);
+        }
+      });
+
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      console.error('[Supabase Proxy Exception]:', err?.message || err);
+      res.status(502).json({ error: 'Supabase Proxy Error: ' + (err?.message || 'Failed to fetch upstream') });
+    }
+  });
+
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 

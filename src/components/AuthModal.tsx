@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Language, translations } from '../lib/i18n';
+import { getStoredUrl, getStoredKey } from '../lib/supabase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -47,8 +48,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   // Supabase manual config section (if needed)
   const [showDbSettings, setShowDbSettings] = useState(!isConfigured);
-  const [supabaseUrl, setSupabaseUrl] = useState('');
-  const [supabaseKey, setSupabaseKey] = useState('');
+  const [supabaseUrl, setSupabaseUrl] = useState(() => getStoredUrl());
+  const [supabaseKey, setSupabaseKey] = useState(() => getStoredKey());
   const [dbSuccess, setDbSuccess] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
@@ -98,6 +99,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 ? 'არასწორი ელ-ფოსტა ან პაროლი'
                 : 'Invalid login credentials'
             );
+          } else if (error.includes('Failed to fetch')) {
+            setErrorMessage(
+              lang === 'ka'
+                ? 'სერვერთან კავშირი ვერ დამყარდა (Failed to fetch). გადაამოწმეთ Supabase Anon Key პარამეტრებში.'
+                : 'Connection failed (Failed to fetch). Please verify your Supabase Anon Key in settings.'
+            );
+            setShowDbSettings(true);
           } else {
             setErrorMessage(error);
           }
@@ -116,6 +124,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 ? 'მომხმარებელი ამ ელ-ფოსტით უკვე რეგისტრირებულია'
                 : 'User already registered'
             );
+          } else if (error.includes('Failed to fetch')) {
+            setErrorMessage(
+              lang === 'ka'
+                ? 'სერვერთან კავშირი ვერ დამყარდა (Failed to fetch). გადაამოწმეთ Supabase Anon Key პარამეტრებში.'
+                : 'Connection failed (Failed to fetch). Please verify your Supabase Anon Key in settings.'
+            );
+            setShowDbSettings(true);
           } else {
             setErrorMessage(error);
           }
