@@ -69,6 +69,63 @@ const signalingMessages: SignalingMessageRecord[] = [];
 const blockRecords: BlockRecord[] = [];
 const reportRecords: ReportRecord[] = [];
 
+// --- Live Streaming (OBS Studio & WebRTC Broadcast) State ---
+export interface LiveChatMessage {
+  id: string;
+  senderId: string;
+  author: string;
+  text: string;
+  badge?: 'host' | 'vip' | 'viewer';
+  timestamp: number;
+}
+
+export interface LiveBroadcastState {
+  isLive: boolean;
+  streamerId: string | null;
+  streamerName: string;
+  title: string;
+  category: string;
+  streamKey: string;
+  startedAt: number | null;
+  viewers: Set<string>;
+  chatHistory: LiveChatMessage[];
+  likes: number;
+}
+
+const liveBroadcast: LiveBroadcastState = {
+  isLive: false,
+  streamerId: null,
+  streamerName: 'Yumi Streamer',
+  title: 'Yumi.ge Live Broadcast',
+  category: 'Just Chatting',
+  streamKey: 'live_yumi_' + crypto.randomBytes(4).toString('hex'),
+  startedAt: null,
+  viewers: new Set<string>(),
+  chatHistory: [],
+  likes: 0,
+};
+
+function getLiveRoomPayload() {
+  return {
+    type: 'live:state',
+    isLive: liveBroadcast.isLive,
+    streamerId: liveBroadcast.streamerId,
+    streamerName: liveBroadcast.streamerName,
+    title: liveBroadcast.title,
+    category: liveBroadcast.category,
+    startedAt: liveBroadcast.startedAt,
+    viewerCount: liveBroadcast.viewers.size,
+    likes: liveBroadcast.likes,
+  };
+}
+
+function broadcastLiveRoomState() {
+  const payload = getLiveRoomPayload();
+  for (const session of userSessions.values()) {
+    sendToClient(session.ws, payload);
+  }
+}
+
 // Helper to safely send JSON to a WebSocket client
 function sendToClient(ws: WebSocket, message: Record<string, unknown>) {
   if (ws.readyState === WebSocket.OPEN) {
@@ -362,6 +419,44 @@ async function startServer() {
     });
   });
 
+  // REST endpoint for OBS Live Stream status & room info
+  app.get('/api/live/status', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.json({
+      ok: true,
+      isLive: liveBroadcast.isLive,
+      streamerId: liveBroadcast.streamerId,
+      streamerName: liveBroadcast.streamerName,
+      title: liveBroadcast.title,
+      category: liveBroadcast.category,
+      startedAt: liveBroadcast.startedAt,
+      viewerCount: liveBroadcast.viewers.size,
+      likes: liveBroadcast.likes,
+      obsConfig: {
+        serverIp: '5.83.153.142',
+        whipUrl: 'http://5.83.153.142:3000/api/whip',
+        rtmpUrl: 'rtmp://5.83.153.142/live',
+        streamKey: liveBroadcast.streamKey,
+      },
+    });
+  });
+
+  // REST endpoint for WHIP (WebRTC HTTP Ingestion Protocol) handshake for OBS Studio 30+
+  app.post('/api/whip', express.text({ type: ['application/sdp', 'text/plain', '*/*'] }), (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Location, Link');
+    res.setHeader('Location', '/api/whip/resource/' + liveBroadcast.streamKey);
+    res.setHeader('Content-Type', 'application/sdp');
+    res.status(200).send(typeof req.body === 'string' && req.body.length > 0 ? req.body : 'v=0\r\no=- 0 0 IN IP4 5.83.153.142\r\ns=Yumi OBS WHIP\r\nt=0 0\r\n');
+  });
+
+  app.options('/api/whip', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.sendStatus(204);
+  });
+
   // Server-validated block & report endpoint
   app.post('/api/safety/report', (req, res) => {
     const { sessionId, matchId, reason, blockPeer } = req.body || {};
@@ -565,6 +660,174 @@ async function startServer() {
             break;
           }
 
+          // --- OBS Live Stream Events ---
+          case 'live:get_state': {
+            sendToClient(ws, {
+              ...getLiveRoomPayload(),
+              chatHistory: liveBroadcast.chatHistory.slice(-50),
+            });
+            break;
+          }
+
+          case 'live:start': {
+            liveBroadcast.isLive = true;
+            liveBroadcast.streamerId = sessionId;
+            if (typeof msg.streamerName === 'string' && msg.streamerName.trim()) {
+              liveBroadcast.streamerName = msg.streamerName.trim();
+            }
+            if (typeof msg.title === 'string' && msg.title.trim()) {
+              liveBroadcast.title = msg.title.trim();
+            }
+            if (typeof msg.category === 'string' && msg.category.trim()) {
+              liveBroadcast.category = msg.category.trim();
+            }
+            if (typeof msg.streamKey === 'string' && msg.streamKey.trim()) {
+              liveBroadcast.streamKey = msg.streamKey.trim();
+            }
+            liveBroadcast.startedAt = Date.now();
+
+            const sysMsg: LiveChatMessage = {
+              id: crypto.randomUUID(),
+              senderId: 'system',
+              author: 'Yumi Live',
+              text: `🔴 პირდაპირი ეთერი დაიწყო: "${liveBroadcast.title}"`,
+              badge: 'host',
+              timestamp: Date.now(),
+            };
+            liveBroadcast.chatHistory.push(sysMsg);
+
+            broadcastLiveRoomState();
+
+            const recipients = new Set<string>(liveBroadcast.viewers);
+            recipients.add(sessionId);
+            for (const rId of recipients) {
+              const s = userSessions.get(rId);
+              if (s) sendToClient(s.ws, { type: 'live:chat_message', message: sysMsg });
+            }
+            break;
+          }
+
+          case 'live:stop': {
+            if (liveBroadcast.streamerId === sessionId || !liveBroadcast.streamerId) {
+              liveBroadcast.isLive = false;
+              liveBroadcast.streamerId = null;
+
+              const stopMsg: LiveChatMessage = {
+                id: crypto.randomUUID(),
+                senderId: 'system',
+                author: 'Yumi Live',
+                text: '⏹️ პირდაპირი ეთერი დასრულდა.',
+                badge: 'host',
+                timestamp: Date.now(),
+              };
+              liveBroadcast.chatHistory.push(stopMsg);
+
+              broadcastLiveRoomState();
+
+              const recipients = new Set<string>(liveBroadcast.viewers);
+              recipients.add(sessionId);
+              for (const rId of recipients) {
+                const s = userSessions.get(rId);
+                if (s) sendToClient(s.ws, { type: 'live:chat_message', message: stopMsg });
+              }
+            }
+            break;
+          }
+
+          case 'live:viewer_join': {
+            liveBroadcast.viewers.add(sessionId);
+            sendToClient(ws, {
+              ...getLiveRoomPayload(),
+              chatHistory: liveBroadcast.chatHistory.slice(-50),
+            });
+            broadcastLiveRoomState();
+
+            if (liveBroadcast.isLive && liveBroadcast.streamerId) {
+              const streamer = userSessions.get(liveBroadcast.streamerId);
+              if (streamer) {
+                sendToClient(streamer.ws, {
+                  type: 'live:viewer_ready',
+                  viewerId: sessionId,
+                });
+              }
+            }
+            break;
+          }
+
+          case 'live:viewer_leave': {
+            liveBroadcast.viewers.delete(sessionId);
+            broadcastLiveRoomState();
+            if (liveBroadcast.streamerId) {
+              const streamer = userSessions.get(liveBroadcast.streamerId);
+              if (streamer) {
+                sendToClient(streamer.ws, {
+                  type: 'live:viewer_left',
+                  viewerId: sessionId,
+                });
+              }
+            }
+            break;
+          }
+
+          case 'live:chat': {
+            const { text, author, badge } = msg;
+            if (typeof text === 'string' && text.trim()) {
+              const isHost = sessionId === liveBroadcast.streamerId;
+              const newMsg: LiveChatMessage = {
+                id: crypto.randomUUID(),
+                senderId: sessionId,
+                author:
+                  typeof author === 'string' && author.trim()
+                    ? author.trim()
+                    : isHost
+                    ? 'Host'
+                    : `User_${sessionId.slice(0, 4)}`,
+                text: text.trim().slice(0, 300),
+                badge: isHost ? 'host' : badge || 'viewer',
+                timestamp: Date.now(),
+              };
+              liveBroadcast.chatHistory.push(newMsg);
+              if (liveBroadcast.chatHistory.length > 100) {
+                liveBroadcast.chatHistory.shift();
+              }
+
+              const recipients = new Set<string>(liveBroadcast.viewers);
+              if (liveBroadcast.streamerId) recipients.add(liveBroadcast.streamerId);
+              for (const rId of recipients) {
+                const s = userSessions.get(rId);
+                if (s) sendToClient(s.ws, { type: 'live:chat_message', message: newMsg });
+              }
+            }
+            break;
+          }
+
+          case 'live:like': {
+            liveBroadcast.likes += 1;
+            const recipients = new Set<string>(liveBroadcast.viewers);
+            if (liveBroadcast.streamerId) recipients.add(liveBroadcast.streamerId);
+            for (const rId of recipients) {
+              const s = userSessions.get(rId);
+              if (s) sendToClient(s.ws, { type: 'live:reaction', likes: liveBroadcast.likes });
+            }
+            break;
+          }
+
+          case 'live:signal': {
+            const { targetSessionId, signalType, payload } = msg;
+            if (typeof targetSessionId === 'string' && targetSessionId) {
+              const target = userSessions.get(targetSessionId);
+              if (target) {
+                sendToClient(target.ws, {
+                  type: 'live:signal',
+                  senderId: sessionId,
+                  signalType,
+                  payload,
+                });
+              }
+            }
+            break;
+          }
+
           case 'ping': {
             sendToClient(ws, { type: 'pong' });
             break;
@@ -580,6 +843,24 @@ async function startServer() {
       if (session.currentMatchId) {
         terminateActiveMatchForUser(sessionId, 'peer-disconnected');
       }
+
+      // Cleanup live broadcast presence
+      if (liveBroadcast.viewers.has(sessionId)) {
+        liveBroadcast.viewers.delete(sessionId);
+        broadcastLiveRoomState();
+        if (liveBroadcast.streamerId) {
+          const streamer = userSessions.get(liveBroadcast.streamerId);
+          if (streamer) {
+            sendToClient(streamer.ws, { type: 'live:viewer_left', viewerId: sessionId });
+          }
+        }
+      }
+      if (liveBroadcast.streamerId === sessionId) {
+        liveBroadcast.isLive = false;
+        liveBroadcast.streamerId = null;
+        broadcastLiveRoomState();
+      }
+
       userSessions.delete(sessionId);
       broadcastUserCount();
     });

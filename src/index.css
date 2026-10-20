@@ -154,4 +154,20 @@
   }
 }
 
+@keyframes floatUp {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(0.8);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translate(-50%, -120px) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -240px) scale(1.4);
+  }
+}
+
+
 

@@ -110,7 +110,7 @@ export class SignalingService {
           peerId: String(data.peerId),
           initiator: Boolean(data.initiator),
         };
-        if (isSupabaseConfigured && supabase) {
+        if (isSupabaseConfigured() && supabase) {
           this.subscribeSupabaseMatchChannel(matchEvent.matchId);
         }
         this.callbacks.onMatchFound?.(matchEvent);

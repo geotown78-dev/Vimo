@@ -14,9 +14,88 @@ import { VimoLogo } from './components/VimoLogo';
 import { MatchmakingService } from './services/MatchmakingService';
 import { MatchmakingState } from './types/chat';
 import { Language, translations } from './lib/i18n';
-import { ShieldAlert, Lock } from 'lucide-react';
+import { ShieldAlert, Lock, Radio, Video } from 'lucide-react';
+import { LiveStreamPage } from './components/LiveStreamPage';
+import { UserAuthButton } from './components/UserAuthButton';
+
+// Feature flag: set to true whenever you want to re-enable and show the 1-on-1 random video chat
+const SHOW_RANDOM_CHAT = false;
 
 export default function App() {
+  // Navigation page: 'chat' (random 1-on-1 video chat) or 'live' (OBS live stream studio & viewer)
+  const [currentPage, setCurrentPage] = useState<'chat' | 'live'>(() => {
+    if (!SHOW_RANDOM_CHAT) return 'live';
+    try {
+      const path = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      if (path === '/chat' || params.get('page') === 'chat') {
+        return 'chat';
+      }
+    } catch {
+      // Ignore
+    }
+    return 'live';
+  });
+
+  const [isStreamLive, setIsStreamLive] = useState(false);
+
+  const navigateTo = useCallback((page: 'chat' | 'live') => {
+    if (!SHOW_RANDOM_CHAT) {
+      setCurrentPage('live');
+      return;
+    }
+    setCurrentPage(page);
+    try {
+      if (page === 'live') {
+        window.history.pushState({}, '', '/live');
+      } else {
+        window.history.pushState({}, '', '/');
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (!SHOW_RANDOM_CHAT) {
+        setCurrentPage('live');
+        return;
+      }
+      const path = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      if (path === '/chat' || params.get('page') === 'chat') {
+        setCurrentPage('chat');
+      } else {
+        setCurrentPage('live');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Poll live stream status for the navigation badge
+  useEffect(() => {
+    let mounted = true;
+    const checkLive = async () => {
+      try {
+        const res = await fetch('/api/live/status');
+        if (res.ok) {
+          const data = await res.json();
+          if (mounted) setIsStreamLive(Boolean(data.isLive));
+        }
+      } catch {
+        // Ignore
+      }
+    };
+    checkLive();
+    const interval = setInterval(checkLive, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // Language state (defaulting to Georgian, persisted in localStorage)
   const [lang, setLang] = useState<Language>(() => {
     try {
@@ -420,12 +499,60 @@ export default function App() {
         className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_60%_50%_at_12%_10%,rgba(29,78,216,0.13),transparent_70%),radial-gradient(ellipse_60%_50%_at_88%_12%,rgba(109,40,217,0.11),transparent_70%),radial-gradient(ellipse_55%_45%_at_50%_96%,rgba(79,70,229,0.16),transparent_70%)]"
       />
 
-      {/* Top Header Bar: Brand (Left) & Online Counter + Language Selector (Right) */}
-      <header className="relative z-30 w-full max-w-[1440px] flex items-center justify-between px-1 sm:px-2 pt-0.5 pb-1 sm:pb-2 shrink-0">
-        <VimoLogo size={22} />
+      {/* Top Header Bar: Brand + Navigation Tabs (Left) & Online Counter + Language Selector (Right) */}
+      <header className="relative z-30 w-full max-w-[1440px] flex flex-wrap items-center justify-between gap-2 px-1 sm:px-2 pt-0.5 pb-1 sm:pb-2 shrink-0">
+        <div className="flex items-center gap-2.5 sm:gap-4">
+          <button
+            type="button"
+            onClick={() => navigateTo(SHOW_RANDOM_CHAT ? 'chat' : 'live')}
+            className="flex items-center text-left cursor-pointer focus:outline-none"
+          >
+            <VimoLogo size={22} />
+          </button>
+
+          {/* Navigation Switcher: Visible when SHOW_RANDOM_CHAT is enabled */}
+          {SHOW_RANDOM_CHAT && (
+            <nav className="flex items-center gap-1 p-0.5 sm:p-1 rounded-xl bg-slate-900/80 border border-slate-800/80 backdrop-blur-md shadow-inner">
+              <button
+                type="button"
+                onClick={() => navigateTo('chat')}
+                className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  currentPage === 'chat'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>{translations[lang].navRandomChat}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigateTo('live')}
+                className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  currentPage === 'live'
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5 text-rose-400" />
+                <span>{translations[lang].navLiveStream}</span>
+                {isStreamLive && (
+                  <span className="relative flex h-2 w-2 ml-0.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </span>
+                )}
+              </button>
+            </nav>
+          )}
+        </div>
+
         <div className="flex items-center gap-2 sm:gap-2.5">
           <OnlineUserCount count={onlineCount} lang={lang} />
           <LanguageSelector currentLang={lang} onSelectLang={handleSelectLang} />
+          <div className="h-4 w-px bg-slate-800 hidden sm:block" />
+          <UserAuthButton lang={lang} />
         </div>
       </header>
 
@@ -449,9 +576,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Stage Grid (Mobile: Stranger BIG top, You SMALL bottom-left, Controls bottom-right; Desktop: Side-by-side square panels + centered bottom toolbar) */}
-      <div className="relative z-10 w-full flex-1 min-h-0 flex items-center justify-center px-1 sm:px-2 py-0.5 sm:py-1 max-w-[1440px]">
-        <div className="vimo-stage-grid">
+      {/* Main Content: OBS Live Stream Page OR 1-on-1 Random Video Chat */}
+      {!SHOW_RANDOM_CHAT || currentPage === 'live' ? (
+        <div className="relative z-10 w-full flex-1 min-h-0 flex items-center justify-center max-w-[1440px] overflow-hidden">
+          <LiveStreamPage lang={lang} onNavigateHome={() => navigateTo(SHOW_RANDOM_CHAT ? 'chat' : 'live')} />
+        </div>
+      ) : (
+        <div className="relative z-10 w-full flex-1 min-h-0 flex items-center justify-center px-1 sm:px-2 py-0.5 sm:py-1 max-w-[1440px]">
+          <div className="vimo-stage-grid">
           {/* Remote User ("Stranger"): Full-width row 1 (BIG) on Mobile; Column 2 (Right) on Desktop */}
           <div className="stage-panel-remote">
             <RemoteVideo
@@ -501,6 +633,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Discreet Safety (Report/Block) & Backend Setup Modal */}
       <SafetyAndSetupModal
