@@ -54,16 +54,23 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
   const [showAuthModalForAdmin, setShowAuthModalForAdmin] = useState(false);
 
-  // Active view tab: 'watch' (Viewer) or 'studio' (OBS Streamer)
+  // Active view tab: 'watch' (Viewer) or 'studio' (OBS Streamer - admin only)
   const [activeTab, setActiveTab] = useState<'watch' | 'studio'>(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('mode') === 'studio') return 'studio';
+      if (urlParams.get('mode') === 'studio' && isAdmin) return 'studio';
     } catch {
       // Ignore
     }
     return 'watch';
   });
+
+  // Keep non-admins strictly on watch mode
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'studio') {
+      setActiveTab('watch');
+    }
+  }, [isAdmin, activeTab]);
 
   // Live room state from server
   const [roomState, setRoomState] = useState<LiveRoomState>({
@@ -447,41 +454,38 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('studio');
-              if (isAdmin) {
-                acquireStudioStream(isScreenShareSource);
-              }
-            }}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'studio'
-                ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {isAdmin ? (
-              <Radio className="w-3.5 h-3.5" />
-            ) : (
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-            )}
-            <span>{t.streamerStudioTab}</span>
-            {!isAdmin && (
-              <span className="text-[10px] text-amber-300 bg-amber-500/20 px-1 py-0.2 rounded font-semibold">
-                ADMIN
-              </span>
-            )}
-          </button>
+          {/* Streamer Studio Button: ONLY rendered for administrator (georgetchedia@gmail.com) */}
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('studio');
+                  acquireStudioStream(isScreenShareSource);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === 'studio'
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>{t.streamerStudioTab}</span>
+                <span className="text-[10px] text-amber-300 bg-amber-500/25 px-1 py-0.2 rounded font-bold">
+                  👑
+                </span>
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setShowObsHelp(true)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-            title={t.obsGuide}
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-          </button>
+              <button
+                type="button"
+                onClick={() => setShowObsHelp(true)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title={t.obsGuide}
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -580,41 +584,79 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
                   </div>
                 </>
               ) : (
-                /* Offline State */
+                /* Offline / Waiting State */
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-radial from-slate-900 to-[#070B16]">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center text-slate-400 mb-4 shadow-xl">
-                    <Radio className="w-8 h-8 text-slate-500" />
-                  </div>
-                  <h2 className="text-lg sm:text-xl font-bold text-slate-200 mb-2">
-                    {t.streamOffline}
-                  </h2>
-                  <p className="max-w-md text-xs sm:text-sm text-slate-400 mb-6 leading-relaxed">
-                    {t.streamOfflineDesc}
-                  </p>
+                  {isAdmin ? (
+                    /* Admin Offline View */
+                    <>
+                      <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4 shadow-xl">
+                        <Radio className="w-8 h-8 text-rose-500 animate-pulse" />
+                      </div>
+                      <h2 className="text-lg sm:text-xl font-bold text-slate-100 mb-2">
+                        {t.streamOffline}
+                      </h2>
+                      <p className="max-w-md text-xs sm:text-sm text-slate-400 mb-6 leading-relaxed">
+                        {t.streamOfflineDesc}
+                      </p>
 
-                  <div className="flex flex-wrap items-center justify-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveTab('studio');
-                        acquireStudioStream(isScreenShareSource);
-                      }}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold text-sm shadow-lg shadow-red-600/25 transition-all cursor-pointer"
-                    >
-                      <Radio className="w-4 h-4" />
-                      <span>{t.streamerStudioTab}</span>
-                      <ArrowRight className="w-4 h-4 ml-1" />
-                    </button>
+                      <div className="flex flex-wrap items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('studio');
+                            acquireStudioStream(isScreenShareSource);
+                          }}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-semibold text-sm shadow-lg shadow-red-600/25 transition-all cursor-pointer"
+                        >
+                          <Radio className="w-4 h-4" />
+                          <span>{t.streamerStudioTab}</span>
+                          <ArrowRight className="w-4 h-4 ml-1" />
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowObsHelp(true)}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium text-xs transition-colors cursor-pointer"
-                    >
-                      <HelpCircle className="w-4 h-4" />
-                      <span>{t.obsGuide}</span>
-                    </button>
-                  </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowObsHelp(true)}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium text-xs transition-colors cursor-pointer"
+                        >
+                          <HelpCircle className="w-4 h-4" />
+                          <span>{t.obsGuide}</span>
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    /* Viewer Waiting Mode View (Non-admin or Guest) */
+                    <div className="flex flex-col items-center max-w-md animate-in fade-in duration-300">
+                      {/* Pulsing Radar Signal */}
+                      <div className="relative mb-5 flex items-center justify-center">
+                        <div className="absolute w-24 h-24 rounded-full bg-blue-500/10 animate-ping pointer-events-none" />
+                        <div className="w-16 h-16 rounded-2xl bg-slate-800/90 border border-slate-700 flex items-center justify-center text-blue-400 shadow-xl shadow-blue-500/10">
+                          <Tv className="w-8 h-8 text-blue-400" />
+                        </div>
+                      </div>
+
+                      {/* Waiting Status Chip */}
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/90 border border-slate-700/80 text-xs text-slate-300 font-medium mb-3 shadow-inner">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                        </span>
+                        <span>{t.waitingStatus}</span>
+                      </div>
+
+                      <h2 className="text-lg sm:text-xl font-bold text-white mb-2 tracking-tight">
+                        {t.waitingForStream}
+                      </h2>
+
+                      <p className="text-xs sm:text-sm text-slate-400 leading-relaxed mb-6">
+                        {t.waitingForStreamDesc}
+                      </p>
+
+                      <div className="px-4 py-2 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        <span>ავტომატური ჩართვა გააქტიურებულია (Live Stream)</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

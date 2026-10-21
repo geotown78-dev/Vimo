@@ -143,6 +143,9 @@ export const translations = {
     adminOnlyBroadcast: 'Broadcasting is restricted to the administrator',
     adminEmailNotice: 'Only georgetchedia@gmail.com has broadcast permissions',
     adminLoginRequired: 'Sign in with administrator account (georgetchedia@gmail.com) to broadcast.',
+    waitingForStream: 'Waiting for stream to start...',
+    waitingForStreamDesc: 'The live broadcast has not started yet. The stream will begin automatically once the administrator goes live.',
+    waitingStatus: 'Waiting Mode',
   },
   ka: {
     onlineCount: 'ონლაინ',
@@ -286,5 +289,8 @@ export const translations = {
     adminOnlyBroadcast: 'პირდაპირი ეთერის გაშვება შეუძლია მხოლოდ ადმინისტრატორს',
     adminEmailNotice: 'სტრიმინგის უფლება აქვს მხოლოდ georgetchedia@gmail.com-ს',
     adminLoginRequired: 'სტრიმის გასაშვებად შედით ადმინისტრატორის ანგარიშით (georgetchedia@gmail.com).',
+    waitingForStream: 'სტრიმინგის დაწყების მოლოდინში...',
+    waitingForStreamDesc: 'პირდაპირი ეთერი ჯერ არ დაწყებულა. სტრიმი ავტომატურად დაიწყება, როგორც კი ადმინისტრატორი ჩართავს მაუწყებლობას.',
+    waitingStatus: 'მოლოდინის რეჟიმი',
   },
 };
