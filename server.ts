@@ -1,4 +1,5 @@
 import express from 'express';
+import NodeMediaServer from 'node-media-server';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
@@ -86,6 +87,7 @@ export interface LiveBroadcastState {
   title: string;
   category: string;
   streamKey: string;
+  streamType?: 'rtmp' | 'webrtc';
   startedAt: number | null;
   viewers: Set<string>;
   chatHistory: LiveChatMessage[];
@@ -95,10 +97,11 @@ export interface LiveBroadcastState {
 const liveBroadcast: LiveBroadcastState = {
   isLive: false,
   streamerId: null,
-  streamerName: 'Yumi Streamer',
-  title: 'Yumi.ge Live Broadcast',
-  category: 'Just Chatting',
-  streamKey: 'live_yumi_' + crypto.randomBytes(4).toString('hex'),
+  streamerName: 'georgetchedia@gmail.com',
+  title: 'Yumi.ge Live Stream',
+  category: 'OBS Studio',
+  streamKey: 'live_yumi_stream',
+  streamType: 'rtmp',
   startedAt: null,
   viewers: new Set<string>(),
   chatHistory: [],
@@ -113,6 +116,8 @@ function getLiveRoomPayload() {
     streamerName: liveBroadcast.streamerName,
     title: liveBroadcast.title,
     category: liveBroadcast.category,
+    streamKey: liveBroadcast.streamKey,
+    streamType: liveBroadcast.streamType || 'rtmp',
     startedAt: liveBroadcast.startedAt,
     viewerCount: liveBroadcast.viewers.size,
     likes: liveBroadcast.likes,
@@ -391,6 +396,144 @@ async function startServer() {
       res.status(502).json({ error: 'Supabase Proxy Error: ' + (err?.message || 'Failed to fetch upstream') });
     }
   });
+
+  // Proxy HTTP-FLV live stream from internal NodeMediaServer (port 8000) to standard HTTPS/HTTP port
+  // Path: /live/:streamKey (or /live/:streamKey.flv)
+  const handleLiveFlv = async (req: express.Request, res: express.Response) => {
+    const rawKey = req.params.streamKey || 'live_yumi_stream';
+    const cleanKey = rawKey.replace(/\.flv$/, '');
+    const upstreamUrl = `http://127.0.0.1:8000/live/${cleanKey}.flv`;
+
+    try {
+      const response = await fetch(upstreamUrl);
+      if (!response.ok) {
+        return res.status(response.status).send('Live stream offline or not available');
+      }
+
+      res.setHeader('Content-Type', 'video/x-flv');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'no-cache, no-store');
+      res.setHeader('Connection', 'keep-alive');
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        const pump = async () => {
+          try {
+            const { done, value } = await reader.read();
+            if (done) {
+              res.end();
+              return;
+            }
+            res.write(value);
+            pump();
+          } catch {
+            res.end();
+          }
+        };
+        pump();
+        req.on('close', () => {
+          reader.cancel().catch(() => {});
+        });
+      } else {
+        res.end();
+      }
+    } catch (err: any) {
+      res.status(502).send('Error connecting to live media server: ' + err.message);
+    }
+  };
+
+  app.get('/live/:streamKey', handleLiveFlv);
+  app.get('/api/live/:streamKey', handleLiveFlv);
+
+  // RTMP Streaming Server for direct ingest from OBS Studio
+  const RTMP_PORT = Number(process.env.RTMP_PORT) || 1935;
+  const NMS_HTTP_PORT = 8000;
+  const ADMIN_STREAM_KEY = 'live_yumi_stream';
+
+  const nmsConfig = {
+    rtmp: {
+      port: RTMP_PORT,
+      chunk_size: 60000,
+      gop_cache: true,
+      ping: 30,
+      ping_timeout: 60,
+    },
+    http: {
+      port: NMS_HTTP_PORT,
+      allow_origin: '*',
+      mediaroot: './media',
+    },
+    auth: {
+      play: false,
+      publish: false,
+    },
+  };
+
+  try {
+    const nms = new NodeMediaServer(nmsConfig);
+
+    nms.on('prePublish', (id: string, StreamPath: string) => {
+      console.log(`[NMS prePublish] StreamPath: ${StreamPath}`);
+      const streamKey = StreamPath.split('/').pop() || '';
+      // Allow live_yumi_stream, live_yumi, or custom keys starting with live_
+      if (!streamKey.startsWith('live_') && streamKey !== ADMIN_STREAM_KEY) {
+        console.warn(`[NMS Reject] Unauthorized stream key: ${streamKey}`);
+        const session = nms.getSession(id);
+        if (session) session.reject();
+      }
+    });
+
+    nms.on('postPublish', (_id: string, StreamPath: string) => {
+      console.log(`[NMS postPublish] OBS live stream connected: ${StreamPath}`);
+      const streamKey = StreamPath.split('/').pop() || ADMIN_STREAM_KEY;
+      liveBroadcast.isLive = true;
+      liveBroadcast.streamerName = 'georgetchedia@gmail.com';
+      liveBroadcast.streamKey = streamKey;
+      liveBroadcast.streamType = 'rtmp';
+      liveBroadcast.startedAt = Date.now();
+      liveBroadcast.title = 'Yumi.ge Live Stream (OBS Direct)';
+      liveBroadcast.category = 'OBS Studio';
+
+      const sysMsg: LiveChatMessage = {
+        id: crypto.randomUUID(),
+        senderId: 'system',
+        author: 'Yumi Live',
+        text: '🔴 OBS პირდაპირი ეთერი ჩაირთო (OBS Connected Live)!',
+        badge: 'host',
+        timestamp: Date.now(),
+      };
+      liveBroadcast.chatHistory.push(sysMsg);
+      broadcastLiveRoomState();
+
+      for (const session of userSessions.values()) {
+        sendToClient(session.ws, { type: 'live:chat_message', message: sysMsg });
+      }
+    });
+
+    nms.on('donePublish', (_id: string, StreamPath: string) => {
+      console.log(`[NMS donePublish] OBS stream disconnected: ${StreamPath}`);
+      liveBroadcast.isLive = false;
+      const stopMsg: LiveChatMessage = {
+        id: crypto.randomUUID(),
+        senderId: 'system',
+        author: 'Yumi Live',
+        text: '⏹️ OBS პირდაპირი ეთერი დასრულდა.',
+        badge: 'host',
+        timestamp: Date.now(),
+      };
+      liveBroadcast.chatHistory.push(stopMsg);
+      broadcastLiveRoomState();
+
+      for (const session of userSessions.values()) {
+        sendToClient(session.ws, { type: 'live:chat_message', message: stopMsg });
+      }
+    });
+
+    nms.run();
+    console.log(`[RTMP Server] Listening for OBS Studio on rtmp://0.0.0.0:${RTMP_PORT}/live`);
+  } catch (err: any) {
+    console.warn(`[RTMP Server] Note on starting NodeMediaServer: ${err.message}`);
+  }
 
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });

@@ -19,6 +19,8 @@ export interface LiveRoomState {
   streamerName: string;
   title: string;
   category: string;
+  streamKey?: string;
+  streamType?: 'rtmp' | 'webrtc';
   startedAt: number | null;
   viewerCount: number;
   likes: number;
@@ -147,6 +149,8 @@ export class LiveBroadcastService {
           streamerName: (msg.streamerName as string) || 'Streamer',
           title: (msg.title as string) || 'Live Stream',
           category: (msg.category as string) || 'General',
+          streamKey: (msg.streamKey as string) || 'live_yumi_stream',
+          streamType: (msg.streamType as 'rtmp' | 'webrtc') || 'rtmp',
           startedAt: (msg.startedAt as number) || null,
           viewerCount: (msg.viewerCount as number) || 0,
           likes: (msg.likes as number) || 0,
