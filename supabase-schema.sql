@@ -62,3 +62,24 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- 5. არსებული მომხმარებლების ელ-ფოსტის მომენტალური დადასტურება:
+-- (Instantly confirm georgetchedia@gmail.com and any other unconfirmed users)
+update auth.users
+set email_confirmed_at = timezone('utc'::text, now())
+where email_confirmed_at is null;
+
+-- 6. ავტომატური დადასტურების ტრიგერი სამომავლო რეგისტრაციებისთვის:
+create or replace function public.auto_confirm_user()
+returns trigger as $$
+begin
+  new.email_confirmed_at = coalesce(new.email_confirmed_at, timezone('utc'::text, now()));
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_auto_confirm on auth.users;
+create trigger on_auth_user_auto_confirm
+  before insert on auth.users
+  for each row execute procedure public.auto_confirm_user();
+

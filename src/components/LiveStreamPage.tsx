@@ -92,7 +92,7 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
 
   // Broadcaster / Studio media state
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>('obs_virtual');
+  const [selectedVideoDevice, setSelectedVideoDevice] = useState<string>('default');
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedAudioDevice, setSelectedAudioDevice] = useState<string>('default');
   const [streamTitle, setStreamTitle] = useState('Yumi.ge Live Broadcast');
@@ -107,7 +107,7 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
   }, [profile]);
   const [studioStream, setStudioStream] = useState<MediaStream | null>(null);
   const [studioMicMuted, setStudioMicMuted] = useState(false);
-  const [isScreenShareSource, setIsScreenShareSource] = useState(false);
+  const [isScreenShareSource, setIsScreenShareSource] = useState(true);
   const [streamDuration, setStreamDuration] = useState('00:00:00');
 
   // Viewer state
@@ -833,20 +833,35 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
                 />
 
                 {!studioStream && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-slate-950/90">
-                    <Tv className="w-10 h-10 text-slate-500 mb-2" />
-                    <p className="text-xs text-slate-400 max-w-sm">
-                      ვიდეო წყარო არ არის ჩართული. აირჩიეთ OBS Virtual Camera ან დააჭირეთ ქვემოთ
-                      ჩართვას.
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950/95 z-20 animate-in fade-in duration-200">
+                    <div className="w-16 h-16 rounded-2xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-3 shadow-lg shadow-blue-500/10">
+                      <Monitor className="w-8 h-8 text-blue-400" />
+                    </div>
+                    <h3 className="text-sm sm:text-base font-bold text-white mb-1">
+                      ეკრანის / OBS-ის გაზიარება
+                    </h3>
+                    <p className="text-xs text-slate-300 max-w-md mb-4 leading-relaxed">
+                      Virtual Camera არ არის საჭირო! დააჭირეთ ქვემოთ ღილაკს და პირდაპირ აირჩიეთ OBS
+                      Studio-ს ფანჯარა ან მთლიანი ეკრანი (1080p, 60 FPS ხმით).
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => acquireStudioStream(false)}
-                      className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
-                    >
-                      <Video className="w-3.5 h-3.5" />
-                      წყაროს ჩართვა
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => acquireStudioStream(true)}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+                      >
+                        <Monitor className="w-4 h-4" />
+                        <span>🖥️ ეკრანის / OBS ფანჯრის არჩევა</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => acquireStudioStream(false)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>კამერა</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -897,12 +912,54 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
 
               {/* Source Selection & Mode */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                {/* Video Source Selector */}
-                <div className="flex flex-col gap-1.5 bg-slate-950/50 p-3 rounded-xl border border-slate-800/70">
+                {/* Screen Share / Window Source Controller */}
+                <div className="flex flex-col gap-2 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                      <Video className="w-3.5 h-3.5 text-blue-400" />
-                      {t.videoSource}
+                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <Monitor className="w-3.5 h-3.5 text-blue-400" />
+                      ვიდეო წყარო (Screen Share)
+                    </label>
+                    <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                      ✓ No Virtual Cam
+                    </span>
+                  </div>
+
+                  {studioStream && isScreenShareSource ? (
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-blue-950/40 border border-blue-500/30 text-xs">
+                      <div className="flex items-center gap-2 text-blue-300 font-semibold truncate">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                        <span className="truncate">ეკრანი / OBS ფანჯარა აქტიურია</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => acquireStudioStream(true)}
+                        className="text-[11px] text-blue-400 hover:text-white font-semibold cursor-pointer underline shrink-0 ml-2"
+                      >
+                        შეცვლა
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => acquireStudioStream(true)}
+                      className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-md transition-all cursor-pointer"
+                    >
+                      <Monitor className="w-3.5 h-3.5" />
+                      <span>🖥️ ეკრანის / OBS ფანჯრის არჩევა</span>
+                    </button>
+                  )}
+
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    აირჩიეთ OBS Studio-ს ფანჯარა ან მთლიანი ეკრანი მაღალი ხარისხით.
+                  </p>
+                </div>
+
+                {/* Audio Source Selector */}
+                <div className="flex flex-col gap-2 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                      {t.audioSource}
                     </label>
                     <button
                       type="button"
@@ -913,44 +970,6 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={isScreenShareSource ? 'screen' : selectedVideoDevice}
-                      onChange={(e) => {
-                        if (e.target.value === 'screen') {
-                          acquireStudioStream(true);
-                        } else {
-                          setSelectedVideoDevice(e.target.value);
-                          acquireStudioStream(false);
-                        }
-                      }}
-                      className="flex-1 bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                    >
-                      {hasObsDevice && (
-                        <option value="obs_virtual">⭐ {t.obsVirtualCamRecommended}</option>
-                      )}
-                      <option value="screen">🖥️ {t.obsScreenCapture}</option>
-                      {videoDevices.map((d) => (
-                        <option key={d.deviceId} value={d.deviceId}>
-                          {d.label || `Camera ${d.deviceId.slice(0, 5)}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {hasObsDevice && (
-                    <span className="text-[11px] text-emerald-400 flex items-center gap-1">
-                      <ShieldCheck className="w-3 h-3" /> OBS Virtual Camera აღმოჩენილია!
-                    </span>
-                  )}
-                </div>
-
-                {/* Audio Source Selector */}
-                <div className="flex flex-col gap-1.5 bg-slate-950/50 p-3 rounded-xl border border-slate-800/70">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Mic className="w-3.5 h-3.5 text-emerald-400" />
-                    {t.audioSource}
-                  </label>
                   <select
                     value={selectedAudioDevice}
                     onChange={(e) => {
@@ -959,13 +978,16 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
                     }}
                     className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
                   >
-                    <option value="default">Default / OBS Audio Line</option>
+                    <option value="default">Default / OBS Desktop Audio</option>
                     {audioDevices.map((d) => (
                       <option key={d.deviceId} value={d.deviceId}>
                         {d.label || `Microphone ${d.deviceId.slice(0, 5)}`}
                       </option>
                     ))}
                   </select>
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    ეკრანის გაზიარებისას მონიშნეთ „Share audio“ ხმის გადასაცემად.
+                  </p>
                 </div>
               </div>
 
@@ -1199,43 +1221,47 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
             </div>
 
             <div className="space-y-3.5 text-xs sm:text-sm text-slate-300 leading-relaxed">
-              {/* Option 1: Virtual Camera (Easiest & Fastest) */}
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-                <span className="font-bold text-emerald-400 block mb-1">
-                  მეთოდი 1: OBS Virtual Camera (ყველაზე მარტივი — 1 წამში)
+              {/* Option 1: Direct Screen Share (No Virtual Camera needed) */}
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="font-bold text-emerald-400 block mb-1.5 flex items-center gap-1.5">
+                  <Monitor className="w-4 h-4 text-emerald-400" />
+                  მეთოდი 1: ეკრანის / OBS ფანჯრის გაზიარება (რეკომენდებული — 1 წამში)
                 </span>
-                <ol className="list-decimal list-inside space-y-1 text-slate-300 text-xs">
-                  <li>{t.obsStep1Desc}</li>
-                  <li>{t.obsStep2Desc}</li>
-                  <li>{t.obsStep3Desc}</li>
+                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-xs">
+                  <li>გახსენით OBS Studio და ჩართეთ თქვენი სცენა ან თამაში.</li>
+                  <li>სტუდიაში დააჭირეთ ლურჯ ღილაკს: <strong className="text-white">„🖥️ ეკრანის / OBS ფანჯრის არჩევა“</strong>.</li>
+                  <li>ბრაუზერის ამომხტარ ფანჯარაში აირჩიეთ <strong className="text-white">Window ➔ OBS Studio</strong> (ან Entire Screen).</li>
+                  <li>მონიშნეთ <strong className="text-white">„Also share system audio“</strong> კომპიუტერის ხმის გადასაცემად.</li>
+                  <li>დააჭირეთ <strong className="text-white">„🔴 პირდაპირ ეთერში გასვლა“</strong> — Virtual Camera არ არის საჭირო!</li>
                 </ol>
               </div>
 
               {/* Option 2: WHIP / RTMP Streaming */}
-              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800">
-                <span className="font-bold text-blue-400 block mb-1">
-                  მეთოდი 2: OBS WHIP Direct Ingest (OBS 30+)
+              <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="font-bold text-blue-400 block mb-1 flex items-center gap-1.5">
+                  <Radio className="w-4 h-4 text-blue-400" />
+                  მეთოდი 2: OBS Direct Stream (RTMP / WHIP)
                 </span>
                 <p className="text-xs text-slate-300 mb-2 leading-normal">
-                  {t.obsAlternativeWhipDesc}
+                  OBS Studio-ში გახსენით Settings ➔ Stream ➔ Service: Custom და შეიყვანეთ ქვემოთ მოცემული სერვერი და გასაღები:
                 </p>
                 <div className="space-y-1.5 text-xs font-mono">
                   <div className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400 truncate">URL: {serverUrl}</span>
+                    <span className="text-slate-400 truncate">RTMP Server: {rtmpUrl}</span>
                     <button
                       type="button"
-                      onClick={() => copyToClipboard(serverUrl, 'url')}
-                      className="text-blue-400 hover:underline shrink-0 ml-2 cursor-pointer"
+                      onClick={() => copyToClipboard(rtmpUrl, 'url')}
+                      className="text-blue-400 hover:underline shrink-0 ml-2 cursor-pointer font-sans"
                     >
                       {t.copy}
                     </button>
                   </div>
                   <div className="bg-slate-900 p-2 rounded border border-slate-800 flex items-center justify-between">
-                    <span className="text-slate-400 truncate">Key: {streamKey}</span>
+                    <span className="text-slate-400 truncate">Stream Key: {streamKey}</span>
                     <button
                       type="button"
                       onClick={() => copyToClipboard(streamKey, 'key')}
-                      className="text-blue-400 hover:underline shrink-0 ml-2 cursor-pointer"
+                      className="text-blue-400 hover:underline shrink-0 ml-2 cursor-pointer font-sans"
                     >
                       {t.copy}
                     </button>

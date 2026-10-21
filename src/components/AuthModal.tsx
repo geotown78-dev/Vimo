@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Language, translations } from '../lib/i18n';
-import { getStoredUrl, getStoredKey } from '../lib/supabase';
+import { getStoredUrl, getStoredKey, getSupabase } from '../lib/supabase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -52,6 +52,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [supabaseKey, setSupabaseKey] = useState(() => getStoredKey());
   const [dbSuccess, setDbSuccess] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [isEmailUnconfirmed, setIsEmailUnconfirmed] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [copiedConfirmSql, setCopiedConfirmSql] = useState(false);
+
+  const handleResendConfirmation = async () => {
+    const client = getSupabase();
+    if (!client || !email.trim()) return;
+    setResendingEmail(true);
+    setResendStatus(null);
+    try {
+      const { error } = await client.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+      });
+      if (error) {
+        setResendStatus(error.message);
+      } else {
+        setResendStatus(
+          lang === 'ka'
+            ? 'დადასტურების წერილი გაიგზავნა თქვენს ელ-ფოსტაზე!'
+            : 'Confirmation email sent to your inbox!'
+        );
+      }
+    } catch (err: any) {
+      setResendStatus(err?.message || 'Error sending confirmation email');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -99,6 +129,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 ? 'არასწორი ელ-ფოსტა ან პაროლი'
                 : 'Invalid login credentials'
             );
+          } else if (error.includes('Email not confirmed')) {
+            setErrorMessage(
+              lang === 'ka'
+                ? 'თქვენი ელ-ფოსტა ჯერ არ არის დადასტურებული (Email not confirmed).'
+                : 'Email is not confirmed yet (Email not confirmed).'
+            );
+            setIsEmailUnconfirmed(true);
           } else if (error.includes('Failed to fetch')) {
             setErrorMessage(
               lang === 'ka'
@@ -204,6 +241,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             onClick={() => {
               setMode('signin');
               setErrorMessage(null);
+              setIsEmailUnconfirmed(false);
+              setResendStatus(null);
             }}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
               mode === 'signin'
@@ -219,6 +258,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             onClick={() => {
               setMode('signup');
               setErrorMessage(null);
+              setIsEmailUnconfirmed(false);
+              setResendStatus(null);
             }}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
               mode === 'signup'
@@ -235,6 +276,57 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <div className="relative z-10 flex items-start gap-2 p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs animate-in fade-in duration-150">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
             <span className="leading-relaxed">{errorMessage}</span>
+          </div>
+        )}
+
+        {isEmailUnconfirmed && (
+          <div className="relative z-10 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-2 animate-in fade-in duration-200">
+            <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4 text-amber-400" />
+              <span>როგორ გავააქტიუროთ ანგარიში მომენტალურად:</span>
+            </div>
+
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              რადგან ანგარიში დარეგისტრირდა მანამ, სანამ <code>ENABLE_EMAIL_AUTOCONFIRM=true</code> ჩაირთვებოდა, Supabase ბაზაში მას სჭირდება 1-წამიანი დადასტურება:
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const sql = `update auth.users set email_confirmed_at = now() where email_confirmed_at is null;`;
+                  navigator.clipboard.writeText(sql);
+                  setCopiedConfirmSql(true);
+                  setTimeout(() => setCopiedConfirmSql(false), 2000);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] shadow transition-colors cursor-pointer"
+              >
+                {copiedConfirmSql ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-slate-950" />
+                    დაკოპირდა! (ჩასვით Supabase SQL Editor-ში)
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    აქტივაციის SQL-ის კოპირება
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={resendingEmail}
+                onClick={handleResendConfirmation}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {resendingEmail ? 'იგზავნება...' : 'წერილის გაგზავნა'}
+              </button>
+            </div>
+
+            {resendStatus && (
+              <p className="text-[11px] text-emerald-400 font-medium">{resendStatus}</p>
+            )}
           </div>
         )}
 
