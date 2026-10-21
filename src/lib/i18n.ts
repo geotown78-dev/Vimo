@@ -139,6 +139,10 @@ export const translations = {
     welcomeUser: 'Welcome',
     myAccount: 'My Account',
     memberBadge: 'Verified Member',
+    adminBadge: 'Administrator',
+    adminOnlyBroadcast: 'Broadcasting is restricted to the administrator',
+    adminEmailNotice: 'Only georgetchedia@gmail.com has broadcast permissions',
+    adminLoginRequired: 'Sign in with administrator account (georgetchedia@gmail.com) to broadcast.',
   },
   ka: {
     onlineCount: 'ონლაინ',
@@ -278,5 +282,9 @@ export const translations = {
     welcomeUser: 'მოგესალმებით',
     myAccount: 'ჩემი ანგარიში',
     memberBadge: 'ავტორიზებული წევრი',
+    adminBadge: 'ადმინისტრატორი',
+    adminOnlyBroadcast: 'პირდაპირი ეთერის გაშვება შეუძლია მხოლოდ ადმინისტრატორს',
+    adminEmailNotice: 'სტრიმინგის უფლება აქვს მხოლოდ georgetchedia@gmail.com-ს',
+    adminLoginRequired: 'სტრიმის გასაშვებად შედით ადმინისტრატორის ანგარიშით (georgetchedia@gmail.com).',
   },
 };

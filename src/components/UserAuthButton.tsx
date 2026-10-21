@@ -41,6 +41,9 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({ lang }) => {
     );
   }
 
+  const ADMIN_EMAIL = 'georgetchedia@gmail.com';
+  const isAdmin = Boolean(user?.email && user.email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase());
+
   // Logged In State: User Avatar & Dropdown Menu
   if (user && profile) {
     return (
@@ -48,15 +51,24 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({ lang }) => {
         <button
           type="button"
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="flex items-center gap-1.5 p-1 sm:px-2.5 sm:py-1 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-white transition-all cursor-pointer shadow-sm"
+          className={`flex items-center gap-1.5 p-1 sm:px-2.5 sm:py-1 rounded-xl bg-slate-900/80 hover:bg-slate-850 border transition-all cursor-pointer shadow-sm ${
+            isAdmin ? 'border-amber-500/50 hover:border-amber-400' : 'border-slate-800 hover:border-slate-700'
+          }`}
         >
           {/* Avatar Disc */}
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-[11px] font-bold text-white shadow-sm">
+          <div
+            className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shadow-sm ${
+              isAdmin
+                ? 'bg-gradient-to-tr from-amber-500 to-rose-500 ring-1 ring-amber-400/40'
+                : 'bg-gradient-to-tr from-blue-600 to-indigo-600'
+            }`}
+          >
             {profile.initials}
           </div>
           <span className="hidden sm:inline-block text-xs font-semibold text-slate-200 max-w-[100px] truncate">
             {profile.displayName}
           </span>
+          {isAdmin && <span className="text-[10px] text-amber-400 font-bold">👑</span>}
           <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
         </button>
 
@@ -64,10 +76,17 @@ export const UserAuthButton: React.FC<UserAuthButtonProps> = ({ lang }) => {
         {isDropdownOpen && (
           <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150 text-xs">
             <div className="px-3 py-2 border-b border-slate-800/80">
-              <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-400">
-                <ShieldCheck className="w-3 h-3 text-blue-400" />
-                <span>{t.memberBadge}</span>
-              </div>
+              {isAdmin ? (
+                <div className="flex items-center gap-1 text-[11px] font-bold text-amber-400">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>👑 {t.adminBadge}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-400">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <span>{t.memberBadge}</span>
+                </div>
+              )}
               <div className="font-bold text-slate-200 truncate mt-0.5">
                 {profile.displayName}
               </div>

@@ -732,6 +732,15 @@ async function startServer() {
           }
 
           case 'live:start': {
+            const senderEmail = typeof msg.email === 'string' ? msg.email.trim().toLowerCase() : '';
+            if (senderEmail !== 'georgetchedia@gmail.com') {
+              sendToClient(ws, {
+                type: 'live:error',
+                error: 'პირდაპირი ეთერის გაშვების უფლება აქვს მხოლოდ ადმინისტრატორს (georgetchedia@gmail.com).',
+              });
+              return;
+            }
+
             liveBroadcast.isLive = true;
             liveBroadcast.streamerId = sessionId;
             if (typeof msg.streamerName === 'string' && msg.streamerName.trim()) {

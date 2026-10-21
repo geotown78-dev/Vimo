@@ -23,6 +23,7 @@ import {
   Play,
   Square,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
 import {
   LiveBroadcastService,
@@ -31,6 +32,9 @@ import {
 } from '../services/LiveBroadcastService';
 import { Language, translations } from '../lib/i18n';
 import { useAuth } from '../context/AuthContext';
+import { AuthModal } from './AuthModal';
+
+const ADMIN_EMAIL = 'georgetchedia@gmail.com';
 
 interface LiveStreamPageProps {
   lang: Language;
@@ -43,6 +47,12 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
 }) => {
   const t = translations[lang];
   const { user, profile } = useAuth();
+
+  const isAdmin = Boolean(
+    user?.email && user.email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase()
+  );
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
+  const [showAuthModalForAdmin, setShowAuthModalForAdmin] = useState(false);
 
   // Active view tab: 'watch' (Viewer) or 'studio' (OBS Streamer)
   const [activeTab, setActiveTab] = useState<'watch' | 'studio'>(() => {
@@ -136,6 +146,10 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
       onLikesUpdate: (likes) => {
         setRoomState((prev) => ({ ...prev, likes }));
         triggerFloatingHeart();
+      },
+      onError: (errMsg) => {
+        setBroadcastError(errMsg);
+        setIsBroadcasting(false);
       },
     });
 
@@ -283,6 +297,11 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
 
   // Start Broadcast
   const handleStartBroadcast = async () => {
+    if (!isAdmin) {
+      setBroadcastError(t.adminOnlyBroadcast);
+      return;
+    }
+    setBroadcastError(null);
     let stream = studioStream;
     if (!stream) {
       stream = await acquireStudioStream(isScreenShareSource);
@@ -293,8 +312,9 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
       await liveServiceRef.current.startLiveStream({
         title: streamTitle || 'Yumi.ge Live Stream',
         category: streamCategory,
-        streamerName: streamerName || 'Host',
+        streamerName: streamerName || profile?.displayName || 'Host',
         streamKey,
+        email: user?.email,
         stream,
       });
       setIsBroadcasting(true);
@@ -431,7 +451,9 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
             type="button"
             onClick={() => {
               setActiveTab('studio');
-              acquireStudioStream(isScreenShareSource);
+              if (isAdmin) {
+                acquireStudioStream(isScreenShareSource);
+              }
             }}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'studio'
@@ -439,8 +461,17 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Radio className="w-3.5 h-3.5" />
+            {isAdmin ? (
+              <Radio className="w-3.5 h-3.5" />
+            ) : (
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+            )}
             <span>{t.streamerStudioTab}</span>
+            {!isAdmin && (
+              <span className="text-[10px] text-amber-300 bg-amber-500/20 px-1 py-0.2 rounded font-semibold">
+                ADMIN
+              </span>
+            )}
           </button>
 
           <button
@@ -677,12 +708,78 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
         )}
 
         {/* ========================================================= */}
-        {/* VIEW 2: OBS BROADCAST STUDIO (STREAMER MODE) */}
+        {/* ========================================================= */}
+        {/* VIEW 2: OBS BROADCAST STUDIO (STREAMER MODE - ADMIN ONLY) */}
         {/* ========================================================= */}
         {activeTab === 'studio' && (
-          <div className="flex-1 min-h-0 flex flex-col xl:flex-row gap-3 overflow-hidden">
-            {/* Left: Video Preview & Broadcast Controls */}
-            <div className="flex-1 min-h-0 flex flex-col bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-800/80 p-3 sm:p-4 overflow-y-auto shadow-2xl">
+          !isAdmin ? (
+            <div className="flex-1 min-h-[360px] flex items-center justify-center p-4">
+              <div className="w-full max-w-lg bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-lg shadow-amber-500/10">
+                  <Lock className="w-8 h-8 text-amber-400" />
+                </div>
+
+                <h2 className="text-lg sm:text-xl font-bold text-white mb-2">
+                  {t.adminOnlyBroadcast}
+                </h2>
+
+                <p className="text-xs sm:text-sm text-slate-300 mb-5 leading-relaxed max-w-md">
+                  {t.adminEmailNotice} (
+                  <span className="font-mono text-amber-400 font-semibold">{ADMIN_EMAIL}</span>
+                  ).
+                </p>
+
+                {!user ? (
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowAuthModalForAdmin(true)}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{t.adminLoginRequired}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('watch')}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition-colors cursor-pointer"
+                    >
+                      {t.watchStreamTab}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-400">
+                      თქვენ შესული ხართ როგორც: <span className="text-slate-200 font-medium">{user.email}</span> (მაყურებელი)
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('watch')}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>{t.watchStreamTab}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col xl:flex-row gap-3 overflow-hidden">
+              {/* Left: Video Preview & Broadcast Controls */}
+              <div className="flex-1 min-h-0 flex flex-col bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-800/80 p-3 sm:p-4 overflow-y-auto shadow-2xl">
+                {broadcastError && (
+                  <div className="p-3 mb-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
+                    <span>{broadcastError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setBroadcastError(null)}
+                      className="text-rose-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
               {/* Studio Canvas / Preview */}
               <div className="relative aspect-video w-full bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center mb-3">
                 <video
@@ -1024,8 +1121,9 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
               </div>
             </div>
           </div>
-        )}
-      </div>
+        )
+      )}
+    </div>
 
       {/* Floating Hearts Animation overlay */}
       <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
@@ -1116,6 +1214,13 @@ export const LiveStreamPage: React.FC<LiveStreamPageProps> = ({
           </div>
         </div>
       )}
+      {/* Admin Login Modal Trigger */}
+      <AuthModal
+        isOpen={showAuthModalForAdmin}
+        onClose={() => setShowAuthModalForAdmin(false)}
+        initialMode="signin"
+        lang={lang}
+      />
     </div>
   );
 };

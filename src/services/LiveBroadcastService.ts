@@ -31,6 +31,7 @@ export type LiveEventCallback = {
   onLikesUpdate?: (likes: number) => void;
   onViewerJoined?: (viewerId: string) => void;
   onViewerLeft?: (viewerId: string) => void;
+  onError?: (error: string) => void;
 };
 
 export class LiveBroadcastService {
@@ -199,6 +200,13 @@ export class LiveBroadcastService {
         break;
       }
 
+      case 'live:error': {
+        if (typeof msg.error === 'string') {
+          this.callbacks.onError?.(msg.error);
+        }
+        break;
+      }
+
       case 'live:signal': {
         await this.handleSignalMessage(msg);
         break;
@@ -213,6 +221,7 @@ export class LiveBroadcastService {
     category: string;
     streamerName: string;
     streamKey?: string;
+    email?: string;
     stream: MediaStream;
   }) {
     this.isStreamer = true;
@@ -225,6 +234,7 @@ export class LiveBroadcastService {
       category: options.category,
       streamerName: options.streamerName,
       streamKey: options.streamKey,
+      email: options.email,
     });
   }
 
